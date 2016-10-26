@@ -14,6 +14,7 @@ import java.util.LinkedList;
  * @author saksham
  */
 public class ProtoMessage {
+    
     public static byte[] openFileRequest(String filename, Boolean forRead) {
         Hdfs.OpenFileRequest.Builder builder = Hdfs.OpenFileRequest.newBuilder();
         builder.setFileName(filename);
@@ -40,6 +41,12 @@ public class ProtoMessage {
             dataNodeLocationBuilder.setPort(ports.get(i));
             blockLocationsBuilder.addLocations(dataNodeLocationBuilder);
         }
+        return builder.build().toByteArray();
+    }
+    
+    public static byte[] closeFileRequest(Integer handle) {
+        Hdfs.CloseFileRequest.Builder builder = Hdfs.CloseFileRequest.newBuilder();
+        builder.setHandle(handle);
         return builder.build().toByteArray();
     }
 }
