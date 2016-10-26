@@ -11,6 +11,7 @@ import Proto.Hdfs;
 import Proto.ProtoMessage;
 import java.rmi.Naming;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Scanner;
@@ -22,6 +23,7 @@ import java.util.Scanner;
 public class Client {
     private static final String NN_NAME = "NameNode";
     private static final String DN_PREFIX = "DataNode";
+    private static final Integer CHUNK_SIZE = 10;
     
     private INameNode nn = null;
     private HashMap<Integer, IDataNode> dns = new HashMap<>();
@@ -35,8 +37,8 @@ public class Client {
     
     public static void main(String args[]) {
         Client client = new Client();
-        //client.findnn();
-        //client.finddns(Integer.parseInt(args[1]));
+        client.findnn();
+        client.finddns(Integer.parseInt(args[1]));
         client.mainloop();
     }
     
@@ -92,6 +94,27 @@ public class Client {
         try {
             nn.closeFile(closeRequest);
         } catch (Exception e) {}
+    }
+    
+    public void writeFile(String fileName, byte[] data) {
+        Integer handle = openFileForWrite(fileName);
+        byte[] assignBlockRequest = ProtoMessage.assignBlockRequest(handle);
+        int dlength = data.length;
+        for(int i=0; i<dlength; i+=CHUNK_SIZE) {
+            byte[] chunk_data = Arrays.copyOfRange(data, i, Math.min(i+CHUNK_SIZE, dlength));
+            Hdfs.BlockLocations blockLocations = null;
+            try {
+                byte[] response = nn.assignBlock(assignBlockRequest);
+                blockLocations = Hdfs.AssignBlockResponse.parseFrom(response).getNewBlock();
+            } catch (Exception e) {}
+            // NOTE: Assuming Data Node lacation's port represents its id.
+            IDataNode dn = dns.get(blockLocations.getLocations(0).getPort());
+            byte[] writeBlockRequest = ProtoMessage.writeBlockRequest(chunk_data, blockLocations);
+            try {
+                dn.writeBlock(writeBlockRequest);
+            } catch (Exception e) {}
+        }
+        closeFile(handle);
     }
     
     public void mainloop() {

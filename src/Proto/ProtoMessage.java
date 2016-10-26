@@ -5,6 +5,7 @@
  */
 package Proto;
 
+import com.google.protobuf.ByteString;
 import java.util.LinkedList;
 
 
@@ -29,6 +30,26 @@ public class ProtoMessage {
         return builder.build().toByteArray();
     }
     
+    public static byte[] closeFileRequest(Integer handle) {
+        Hdfs.CloseFileRequest.Builder builder = Hdfs.CloseFileRequest.newBuilder();
+        builder.setHandle(handle);
+        return builder.build().toByteArray();
+    }
+    
+    public static byte[] writeBlockRequest(byte[] data, Hdfs.BlockLocations blockLocations) {
+        Hdfs.WriteBlockRequest.Builder builder = Hdfs.WriteBlockRequest.newBuilder();
+        ByteString bs = ByteString.copyFrom(data);
+        builder.addData(bs);
+        builder.setBlockInfo(blockLocations);
+        return builder.build().toByteArray();
+    }
+            
+    public static byte[] assignBlockRequest(Integer handle) {
+        Hdfs.AssignBlockRequest.Builder builder = Hdfs.AssignBlockRequest.newBuilder();
+        builder.setHandle(handle);
+        return builder.build().toByteArray();
+    }
+    
     public static byte[] assignBlockResponse(Integer status, Integer blockNumber, LinkedList<String> ips, LinkedList<Integer> ports) {
         Hdfs.AssignBlockResponse.Builder builder = Hdfs.AssignBlockResponse.newBuilder();
         builder.setStatus(status);
@@ -41,12 +62,6 @@ public class ProtoMessage {
             dataNodeLocationBuilder.setPort(ports.get(i));
             blockLocationsBuilder.addLocations(dataNodeLocationBuilder);
         }
-        return builder.build().toByteArray();
-    }
-    
-    public static byte[] closeFileRequest(Integer handle) {
-        Hdfs.CloseFileRequest.Builder builder = Hdfs.CloseFileRequest.newBuilder();
-        builder.setHandle(handle);
         return builder.build().toByteArray();
     }
 }
