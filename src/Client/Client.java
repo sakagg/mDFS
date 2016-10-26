@@ -7,6 +7,8 @@ package Client;
 
 import NameNode.INameNode;
 import DataNode.IDataNode;
+import Proto.Hdfs;
+import Proto.ProtoMessage;
 import java.rmi.Naming;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -75,8 +77,21 @@ public class Client {
         }
     }
     
-    public void openFile(String filename, Boolean readmode) {
-        
+    public Integer openFileForWrite(String filename) {
+        byte[] openRequest = ProtoMessage.openFileRequest(filename, false);
+        Integer handle = -1;
+        try {
+            byte[] openResponse = nn.openFile(openRequest);
+            handle = Hdfs.OpenFileResponse.parseFrom(openResponse).getHandle();
+        } catch (Exception e) {}
+        return handle;
+    }
+    
+    public void closeFile(Integer handle) {
+        byte[] closeRequest = ProtoMessage.closeFileRequest(handle);
+        try {
+            nn.closeFile(closeRequest);
+        } catch (Exception e) {}
     }
     
     public void mainloop() {
