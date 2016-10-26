@@ -7,7 +7,6 @@ package NameNode;
 
 import static Client.Client.log;
 import DataNode.IDataNode;
-import com.sun.javafx.font.freetype.HBGlyphLayout;
 import java.net.MalformedURLException;
 import java.rmi.Naming;
 import java.rmi.RemoteException;
@@ -16,7 +15,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
-
 
 /**
  *
@@ -66,8 +64,7 @@ public class NameNode implements INameNode {
 
     @Override
         public byte[] openFile(byte[] inp) throws RemoteException {
-            OpenFileRequest ofr = ProtoHelper.getOpenFileRequest(inp);
-            
+            OpenFileRequest ofr = ProtoHelper.getOpenFileRequest();
             if(ofr.getForRead() == false) {
                 fileNameToNumber.put(ofr.getFileName(), globalFileCounter);
 
