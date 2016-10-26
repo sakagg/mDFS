@@ -75,6 +75,10 @@ public class Client {
         }
     }
     
+    public void openFile(String filename, Boolean readmode) {
+        
+    }
+    
     public void mainloop() {
         Scanner in = new Scanner(System.in);
         for(;;) {
