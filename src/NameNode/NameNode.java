@@ -4,7 +4,7 @@
  * and open the template in the editor.
  */
 package NameNode;
-import Proto.Hdfs.*;
+import Proto.Hdfs;
 import Proto.ProtoMessage;
 
 
@@ -18,7 +18,6 @@ import java.rmi.registry.LocateRegistry;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedList;
 import java.util.Random;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -44,21 +43,19 @@ public class NameNode implements INameNode {
     private static final String NN_NAME = "NameNode";
     private static final String DN_PREFIX = "DataNode";
     private static final Integer DN_COUNT = 1;
+    private static final Integer REP_FACTOR = 1; //Replication Factor in DNs
 
-    int globalBlockCounter;
-    int globalFileCounter;
+    Integer globalBlockCounter = 0;
+    Integer globalFileCounter = 0;
 
     private static final HashMap<Integer, IDataNode> dns = new HashMap<>();
-    private static final LinkedList<DataNodeLocation> dnLocations = new LinkedList<>();
+    private static final ArrayList<DataNodeLocation> dnLocations = new ArrayList<>();
     private static final HashMap<String, Integer> fileNameToHandle = new HashMap<>();
-    private static final HashMap<Integer, LinkedList<Integer> > handleToBlocks = new HashMap<>();
-    private static final HashMap<Integer, LinkedList<DataNodeLocation> > blockToDnLocations = new HashMap<>();
+    private static final HashMap<Integer, ArrayList<Integer> > handleToBlocks = new HashMap<>();
+    private static final HashMap<Integer, ArrayList<DataNodeLocation> > blockToDnLocations = new HashMap<>();
 
     NameNode() throws RemoteException {
         super();
-        globalBlockCounter = 0; // TODO initialise from fsimage
-        globalFileCounter = 0; // TODO initialise from fsimage
-        finddns(DN_COUNT);
     }
     
     private void addBlockToHandle(Integer handle, Integer blockNumber) {
@@ -66,7 +63,8 @@ public class NameNode implements INameNode {
             handleToBlocks.get(handle).add(blockNumber);
         }
         else {
-            LinkedList<Integer> l = new LinkedList<>();
+            ArrayList<Integer> l = new ArrayList<>();
+            l.add(blockNumber);
             handleToBlocks.put(handle, l);
         }
     }
@@ -76,27 +74,26 @@ public class NameNode implements INameNode {
             blockToDnLocations.get(blockNumber).add(dnl);
         }
         else {
-            LinkedList<DataNodeLocation> l = new LinkedList<>();
+            ArrayList<DataNodeLocation> l = new ArrayList<>();
+            l.add(dnl);
             blockToDnLocations.put(blockNumber, l);
         }
     }
     
     public static void main(String args[]) throws MalformedURLException {
         try {
-            DataNodeLocation dnl = new DataNodeLocation("127.0.0.1",1099);
-            dnLocations.add(dnl);
-            
             LocateRegistry.createRegistry(1099);
             NameNode nn = new NameNode();
-            Naming.rebind("//localhost/RmiServer"+NN_NAME, nn);
+            Naming.rebind("rmi://localhost/"+NN_NAME, nn);
+            nn.finddns(DN_COUNT);
         } catch (RemoteException e) { }
     }
 
     @Override
         public byte[] openFile(byte[] inp) throws RemoteException {
-            OpenFileRequest openFileRequest;
+            Hdfs.OpenFileRequest openFileRequest;
             try {
-                openFileRequest = OpenFileRequest.parseFrom(inp);
+                openFileRequest = Hdfs.OpenFileRequest.parseFrom(inp);
                 if(openFileRequest.getForRead() == false) {
                     fileNameToHandle.put(openFileRequest.getFileName(), globalFileCounter);
                     byte[] openFileResponse = ProtoMessage.openFileResponse(1,globalFileCounter);
@@ -124,29 +121,31 @@ public class NameNode implements INameNode {
 
     @Override
         public byte[] assignBlock(byte[] inp) throws RemoteException {
-        AssignBlockRequest assignBlockRequest;
-        try {
-            assignBlockRequest = AssignBlockRequest.parseFrom(inp);
-            Integer handle = assignBlockRequest.getHandle();
-            Random rand = new Random();
-            Integer dataNodeId = rand.nextInt(DN_COUNT);
-            DataNodeLocation dnl = dnLocations.get(dataNodeId);
-            LinkedList<String> ips = new LinkedList<>();
-            LinkedList<Integer> ports = new LinkedList<>();
-            ips.add(dnl.ip);
-            ports.add(dnl.port);
-            // TODO add in memory
-            addBlockToHandle(handle, globalBlockCounter);
-            addDnLocationToBlock(globalBlockCounter, dnl);
-           
-            byte[] ret = ProtoMessage.assignBlockResponse(1,globalBlockCounter,ips,ports);
-            globalBlockCounter++;
+            Hdfs.AssignBlockRequest assignBlockRequest;
+            byte[] ret = null;
+            try {
+                assignBlockRequest = Hdfs.AssignBlockRequest.parseFrom(inp);
+                Integer handle = assignBlockRequest.getHandle();
+                addBlockToHandle(handle, globalBlockCounter);
+                ArrayList<String> ips = new ArrayList<>();
+                ArrayList<Integer> ports = new ArrayList<>();
+                for(int i=0; i<REP_FACTOR; i++)
+                {
+                    Random rand = new Random();
+                    Integer dataNodeId = rand.nextInt(DN_COUNT);
+                    DataNodeLocation dnl = dnLocations.get(dataNodeId);
+                    ips.add(dnl.ip);
+                    ports.add(dnl.port);
+                    // TODO add in memory
+                    addDnLocationToBlock(globalBlockCounter, dnl);
+                }
+
+                ret = ProtoMessage.assignBlockResponse(1, globalBlockCounter, ips, ports);
+                globalBlockCounter++;
+            } catch (InvalidProtocolBufferException ex) {
+                Logger.getLogger(NameNode.class.getName()).log(Level.SEVERE, null, ex);
+            }
             return ret;
-            // currently giving only 1 blockLocation
-        } catch (InvalidProtocolBufferException ex) {
-            Logger.getLogger(NameNode.class.getName()).log(Level.SEVERE, null, ex);
-        }
-            return null;
         }
 
     @Override
@@ -189,6 +188,8 @@ public class NameNode implements INameNode {
                 Thread.sleep(1000);
             } catch (Exception E) {}
         }
+        for(Integer i=0; i<DN_COUNT; i++)
+            dnLocations.add(new DataNodeLocation("", i));
     }
 }
 

@@ -6,7 +6,7 @@
 package Proto;
 
 import com.google.protobuf.ByteString;
-import java.util.LinkedList;
+import java.util.ArrayList;
 
 
 
@@ -50,7 +50,7 @@ public class ProtoMessage {
         return builder.build().toByteArray();
     }
     
-    public static byte[] assignBlockResponse(Integer status, Integer blockNumber, LinkedList<String> ips, LinkedList<Integer> ports) {
+    public static byte[] assignBlockResponse(Integer status, Integer blockNumber, ArrayList<String> ips, ArrayList<Integer> ports) {
         Hdfs.AssignBlockResponse.Builder builder = Hdfs.AssignBlockResponse.newBuilder();
         builder.setStatus(status);
         Hdfs.BlockLocations.Builder blockLocationsBuilder = Hdfs.BlockLocations.newBuilder();
