@@ -48,7 +48,11 @@ public class Client {
             try {
                 nn = (INameNode) Naming.lookup("rmi://localhost/" + NN_NAME);
                 log("Found Name Node");
-            } catch (Exception e) { }
+            } catch (Exception e) {}
+            if (nn == null)
+                try {
+                    Thread.sleep(1000);
+                } catch (Exception e) {}
         }
     }
     
@@ -121,7 +125,8 @@ public class Client {
         Scanner in = new Scanner(System.in);
         for(;;) {
             String line = in.nextLine();
-            System.out.println(line);
+            String[] ip = line.split(" ");
+            writeFile(ip[0], ip[1].getBytes());
         }
     }
 }

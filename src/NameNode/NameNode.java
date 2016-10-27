@@ -8,14 +8,15 @@ import Proto.Hdfs;
 import Proto.ProtoMessage;
 
 
-import static Client.Client.log;
 import DataNode.IDataNode;
 import com.google.protobuf.InvalidProtocolBufferException;
 import java.net.MalformedURLException;
 import java.rmi.Naming;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
+import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Random;
@@ -38,11 +39,11 @@ class DataNodeLocation {
     }
 }
 
-public class NameNode implements INameNode {
+public class NameNode extends UnicastRemoteObject implements INameNode {
 
     private static final String NN_NAME = "NameNode";
     private static final String DN_PREFIX = "DataNode";
-    private static final Integer DN_COUNT = 1;
+    private static Integer DN_COUNT = -1;
     private static final Integer REP_FACTOR = 1; //Replication Factor in DNs
 
     Integer globalBlockCounter = 0;
@@ -56,6 +57,13 @@ public class NameNode implements INameNode {
 
     NameNode() throws RemoteException {
         super();
+    }
+    
+    public static void log(String s) {
+        String op = String.valueOf(System.currentTimeMillis()) + " ";
+        op += "[NameNode] ";
+        op += ": ";
+        System.out.println(op + s);
     }
     
     private void addBlockToHandle(Integer handle, Integer blockNumber) {
@@ -80,13 +88,19 @@ public class NameNode implements INameNode {
         }
     }
     
-    public static void main(String args[]) throws MalformedURLException {
+    public static void main(String args[]) {
+        DN_COUNT = Integer.parseInt(args[1]);
         try {
             LocateRegistry.createRegistry(1099);
+            log("Started Registry");
+        } catch (Exception e) { log(e.toString()); }
+        try {
             NameNode nn = new NameNode();
             Naming.rebind("rmi://localhost/"+NN_NAME, nn);
+            log("Bound to RMI");
             nn.finddns(DN_COUNT);
-        } catch (RemoteException e) { }
+        } catch (Exception e) { log(e.toString()); }
+        for(;;) {}
     }
 
     @Override
@@ -95,8 +109,12 @@ public class NameNode implements INameNode {
             try {
                 openFileRequest = Hdfs.OpenFileRequest.parseFrom(inp);
                 if(openFileRequest.getForRead() == false) {
+                    log("Opening file '"
+                            + openFileRequest.getFileName()
+                            + "' for Writing with handle "
+                            + globalFileCounter.toString());
                     fileNameToHandle.put(openFileRequest.getFileName(), globalFileCounter);
-                    byte[] openFileResponse = ProtoMessage.openFileResponse(1,globalFileCounter);
+                    byte[] openFileResponse = ProtoMessage.openFileResponse(1, globalFileCounter);
                     globalFileCounter++;
                     return openFileResponse;
                 }
@@ -139,6 +157,9 @@ public class NameNode implements INameNode {
                     // TODO add in memory
                     addDnLocationToBlock(globalBlockCounter, dnl);
                 }
+                log("Handle " + handle.toString()
+                        + " assigned Block " + globalBlockCounter.toString()
+                        + " assigned DNs: " + ports.toString());
 
                 ret = ProtoMessage.assignBlockResponse(1, globalBlockCounter, ips, ports);
                 globalBlockCounter++;

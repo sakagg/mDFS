@@ -43,6 +43,12 @@ public class ProtoMessage {
         builder.setBlockInfo(blockLocations);
         return builder.build().toByteArray();
     }
+    
+    public static byte[] writeBlockResponse(Integer status) {
+        Hdfs.WriteBlockResponse.Builder builder = Hdfs.WriteBlockResponse.newBuilder();
+        builder.setStatus(status);
+        return builder.build().toByteArray();
+    }
             
     public static byte[] assignBlockRequest(Integer handle) {
         Hdfs.AssignBlockRequest.Builder builder = Hdfs.AssignBlockRequest.newBuilder();
@@ -55,13 +61,14 @@ public class ProtoMessage {
         builder.setStatus(status);
         Hdfs.BlockLocations.Builder blockLocationsBuilder = Hdfs.BlockLocations.newBuilder();
         blockLocationsBuilder.setBlockNumber(blockNumber);
-        Integer n = ips.size();
+        Integer n = ports.size();
         for(Integer i=0; i<n; i++) {
             Hdfs.DataNodeLocation.Builder dataNodeLocationBuilder = Hdfs.DataNodeLocation.newBuilder();
             dataNodeLocationBuilder.setIp(ips.get(i));
             dataNodeLocationBuilder.setPort(ports.get(i));
             blockLocationsBuilder.addLocations(dataNodeLocationBuilder);
         }
+        builder.setNewBlock(blockLocationsBuilder);
         return builder.build().toByteArray();
     }
 }
