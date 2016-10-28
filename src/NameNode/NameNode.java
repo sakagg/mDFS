@@ -152,10 +152,14 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                     Random rand = new Random();
                     Integer dataNodeId = rand.nextInt(DN_COUNT);
                     DataNodeLocation dnl = dnLocations.get(dataNodeId);
-                    ips.add(dnl.ip);
-                    ports.add(dnl.port);
-                    // TODO add in memory
-                    addDnLocationToBlock(globalBlockCounter, dnl);
+                    if (ports.contains(dnl.port)) {
+                        i--;
+                    } else {
+                        ips.add(dnl.ip);
+                        ports.add(dnl.port);
+                        // TODO add in memory
+                        addDnLocationToBlock(globalBlockCounter, dnl);
+                    }
                 }
                 log("Handle " + handle.toString()
                         + " assigned Block " + globalBlockCounter.toString()
