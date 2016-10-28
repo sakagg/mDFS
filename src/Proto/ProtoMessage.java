@@ -5,6 +5,7 @@
  */
 package Proto;
 
+import Proto.Hdfs.DataNodeLocation;
 import com.google.protobuf.ByteString;
 import java.util.ArrayList;
 
@@ -41,6 +42,19 @@ public class ProtoMessage {
         ByteString bs = ByteString.copyFrom(data);
         builder.addData(bs);
         builder.setBlockInfo(blockLocations);
+        return builder.build().toByteArray();
+    }
+    
+    public static byte[] writeBlockRequest(byte[] data, Integer blockNumber, ArrayList<DataNodeLocation> dataNodeLocations) {
+        Hdfs.WriteBlockRequest.Builder builder = Hdfs.WriteBlockRequest.newBuilder();
+        ByteString bs = ByteString.copyFrom(data);
+        builder.addData(bs);
+        Hdfs.BlockLocations.Builder blockLocationsBuilder = Hdfs.BlockLocations.newBuilder();
+        for(DataNodeLocation dnl : dataNodeLocations) {
+            blockLocationsBuilder.addLocations(dnl);
+        }
+        blockLocationsBuilder.setBlockNumber(blockNumber);
+        builder.setBlockInfo(blockLocationsBuilder);
         return builder.build().toByteArray();
     }
     

@@ -31,7 +31,7 @@ java -classpath $DEPENDENCIES:$COMPILED_DIR $NN_CODE_DIR/NameNode --numdn $NUM_D
 i=0
 while [ $i -lt $NUM_DNS ]
 do
-	java -classpath $DEPENDENCIES:$COMPILED_DIR $DN_CODE_DIR/DataNode --nodeid $i & # Data Nodes
+	java -classpath $DEPENDENCIES:$COMPILED_DIR $DN_CODE_DIR/DataNode --nodeid $i $NUM_DNS & # Data Nodes
 	let i=i+1
 done
 
