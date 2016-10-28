@@ -13,16 +13,16 @@ NN_CODE_DIR="NameNode"
 DN_CODE_DIR="DataNode"
 CLIENT_CODE_DIR="Client"
 PROTO_CODE_DIR="Proto"
-DEPENDENCIES="ExternalLibs/protobuf-java-3.0.0.jar:Compiled"
+DEPENDENCIES="ExternalLibs/protobuf-java-3.0.0.jar"
 COMPILED_DIR="Compiled"
 NUM_DNS=2
 
 echo "Compiling..."
 
-javac -classpath $DEPENDENCIES $CODE_DIR/$PROTO_CODE_DIR/*.java -d $COMPILED_DIR
-javac -classpath $DEPENDENCIES $CODE_DIR/$NN_CODE_DIR/*.java -d $COMPILED_DIR
-javac -classpath $DEPENDENCIES $CODE_DIR/$DN_CODE_DIR/*.java -d $COMPILED_DIR
-javac -classpath $DEPENDENCIES $CODE_DIR/$CLIENT_CODE_DIR/*.java -d $COMPILED_DIR
+javac -classpath $DEPENDENCIES:$CODE_DIR $CODE_DIR/$PROTO_CODE_DIR/*.java -d $COMPILED_DIR
+javac -classpath $DEPENDENCIES:$CODE_DIR $CODE_DIR/$NN_CODE_DIR/*.java -d $COMPILED_DIR
+javac -classpath $DEPENDENCIES:$CODE_DIR $CODE_DIR/$DN_CODE_DIR/*.java -d $COMPILED_DIR
+javac -classpath $DEPENDENCIES:$CODE_DIR $CODE_DIR/$CLIENT_CODE_DIR/*.java -d $COMPILED_DIR
 
 echo "Compiled."
 

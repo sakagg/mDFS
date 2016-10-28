@@ -10,13 +10,11 @@ import Proto.ProtoMessage;
 
 import DataNode.IDataNode;
 import com.google.protobuf.InvalidProtocolBufferException;
-import java.net.MalformedURLException;
 import java.rmi.Naming;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Random;
@@ -28,16 +26,6 @@ import java.util.logging.Logger;
  *
  * @author saksham
  */
-
-class DataNodeLocation {
-    String ip;
-    Integer port;
-
-    public DataNodeLocation(String i, Integer p) {
-        ip = i;
-        port = p;
-    }
-}
 
 public class NameNode extends UnicastRemoteObject implements INameNode {
 
@@ -119,7 +107,15 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                     return openFileResponse;
                 }
                 else {
-
+                    String filename = openFileRequest.getFileName();
+                    Integer handle = fileNameToHandle.get(filename);
+                    log("Opening file '"
+                            + openFileRequest.getFileName()
+                            + "' for Reading with handle "
+                            + handle.toString()
+                            + " and assigned blocks as "
+                            + handleToBlocks.get(handle).toString());
+                    return ProtoMessage.openFileResponse(1, handle, handleToBlocks.get(handle));
                 }
             } catch (InvalidProtocolBufferException ex) {
                 Logger.getLogger(NameNode.class.getName()).log(Level.SEVERE, null, ex);
@@ -134,7 +130,16 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
 
     @Override
         public byte[] getBlockLocations(byte[] inp) throws RemoteException {
-            return null;
+            Hdfs.BlockLocationRequest request = null;
+            try {
+                request = Hdfs.BlockLocationRequest.parseFrom(inp);
+            } catch (Exception e) { log(e.toString()); }
+            ArrayList<Integer> blockNums = new ArrayList<>(request.getBlockNumsList());
+            ArrayList<ArrayList<DataNodeLocation>> dnls = new ArrayList<>();
+            for (Integer block: blockNums) {
+                dnls.add(blockToDnLocations.get(block));
+            }
+            return ProtoMessage.blockLocationResponse(blockNums, dnls);
         }
 
     @Override
