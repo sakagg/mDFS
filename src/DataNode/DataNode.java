@@ -6,7 +6,6 @@
 package DataNode;
 
 import Proto.Hdfs;
-import Proto.Hdfs.DataNodeLocation;
 import Proto.ProtoMessage;
 import java.nio.charset.StandardCharsets;
 import java.rmi.Naming;
@@ -40,7 +39,7 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
     
     public static void main (String args[]) {
         myId = Integer.parseInt(args[1]);
-        DN_COUNT = Integer.parseInt(args[2]);
+        DN_COUNT = Integer.parseInt(args[3]);
         try {
             DataNode dn = new DataNode();
             Naming.rebind("rmi://localhost/" + DN_PREFIX + myId.toString(), dn);
