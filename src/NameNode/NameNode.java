@@ -44,7 +44,7 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
     private static final String NN_NAME = "NameNode";
     private static final String DN_PREFIX = "DataNode";
     private static Integer DN_COUNT = -1;
-    private static final Integer REP_FACTOR = 1; //Replication Factor in DNs
+    private static final Integer REP_FACTOR = 2; //Replication Factor in DNs
 
     Integer globalBlockCounter = 0;
     Integer globalFileCounter = 0;
@@ -152,10 +152,14 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                     Random rand = new Random();
                     Integer dataNodeId = rand.nextInt(DN_COUNT);
                     DataNodeLocation dnl = dnLocations.get(dataNodeId);
-                    ips.add(dnl.ip);
-                    ports.add(dnl.port);
-                    // TODO add in memory
-                    addDnLocationToBlock(globalBlockCounter, dnl);
+                    if (ports.contains(dnl.port)) {
+                        i--;
+                    } else {
+                        ips.add(dnl.ip);
+                        ports.add(dnl.port);
+                        // TODO add in memory
+                        addDnLocationToBlock(globalBlockCounter, dnl);
+                    }
                 }
                 log("Handle " + handle.toString()
                         + " assigned Block " + globalBlockCounter.toString()
