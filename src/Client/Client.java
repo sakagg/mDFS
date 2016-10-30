@@ -88,6 +88,25 @@ public class Client {
         }
     }
     
+    public void listFiles() {
+        byte[] inp = "*".getBytes();
+        try {
+            byte[] res = nn.list(inp);
+            Hdfs.ListFilesResponse listFilesResponse = Hdfs.ListFilesResponse.parseFrom(res);
+            if(listFilesResponse.getStatus() == 1)
+            {
+                for(String fileName : listFilesResponse.getFileNamesList()) {
+                    System.out.println(fileName);
+                }
+                System.out.println("");
+            }
+            else {
+                System.err.println("Some Error Occured During Listing File");
+            }
+        } catch (Exception e) { log(e.toString()); }
+        
+    }
+    
     public Integer openFileForWrite(String filename) {
         byte[] openRequest = ProtoMessage.openFileRequest(filename, Boolean.FALSE);
         Integer handle = -1;
@@ -159,10 +178,10 @@ public class Client {
                     data = data.concat(readBlockResponse.getData(0));
                 } catch (Exception e) { log(e.toString()); }
             }
-            log("File " + fileName + " has contents: " + data.toStringUtf8());
+            System.out.println("File " + fileName + " has contents: " + data.toStringUtf8());
         }
         else {
-            log("File : " + fileName + " does not exist.");
+            System.out.println("File : " + fileName + " does not exist.");
         }
     }
     
@@ -175,6 +194,8 @@ public class Client {
                 writeFile(ip[1], ip[2].getBytes());
             else if(ip[0].contentEquals("read"))
                 readFile(ip[1]);
+            else if(ip[0].contentEquals("list"))
+                listFiles();
         }
     }
 }

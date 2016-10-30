@@ -9,6 +9,7 @@ import NameNode.DataNodeLocation;
 import com.google.protobuf.ByteString;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 
 
@@ -62,6 +63,7 @@ public class ProtoMessage {
     }
     
     //TODO: Remove this function and use the other writeBlockRequest instead.
+    //Following the rule that use of builder has to be in this file (ProtoMessage) and this makes code simpler in DataNode
     public static byte[] writeBlockRequest(byte[] data, Integer blockNumber, ArrayList<Hdfs.DataNodeLocation> dataNodeLocations) {
         Hdfs.WriteBlockRequest.Builder builder = Hdfs.WriteBlockRequest.newBuilder();
         ByteString bs = ByteString.copyFrom(data);
@@ -72,6 +74,13 @@ public class ProtoMessage {
         }
         blockLocationsBuilder.setBlockNumber(blockNumber);
         builder.setBlockInfo(blockLocationsBuilder);
+        return builder.build().toByteArray();
+    }
+    
+    public static byte[] listFileResponse(Integer status, Set<String> fileNames) {
+        Hdfs.ListFilesResponse.Builder builder = Hdfs.ListFilesResponse.newBuilder();
+        builder.setStatus(status);
+        builder.addAllFileNames(fileNames);
         return builder.build().toByteArray();
     }
     
