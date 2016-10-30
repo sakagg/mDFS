@@ -108,6 +108,8 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                 }
                 else {
                     String filename = openFileRequest.getFileName();
+                    if(fileNameToHandle.containsKey(filename) == false)
+                        return ProtoMessage.openFileResponse(0, -1);
                     Integer handle = fileNameToHandle.get(filename);
                     log("Opening file '"
                             + openFileRequest.getFileName()

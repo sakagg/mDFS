@@ -15,7 +15,7 @@ CLIENT_CODE_DIR="Client"
 PROTO_CODE_DIR="Proto"
 DEPENDENCIES="ExternalLibs/protobuf-java-3.0.0.jar"
 COMPILED_DIR="Compiled"
-NUM_DNS=2
+NUM_DNS=4
 
 echo "Compiling..."
 
