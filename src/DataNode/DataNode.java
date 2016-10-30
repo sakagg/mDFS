@@ -23,8 +23,8 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
     private static final String DN_PREFIX = "DataNode";
     private static Integer myId = -1;
     private static Integer DN_COUNT = -1;
-    private static String myName = "";
-    private HashMap<Integer, IDataNode> dns = new HashMap<>();
+    private static final HashMap<Integer, IDataNode> dns = new HashMap<>();
+    private static HashMap<Integer, byte[]> chunks = new HashMap<>();
     
     DataNode() throws RemoteException {
         super();
@@ -51,7 +51,13 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
     
     @Override
         public byte[] readBlock(byte[] inp) throws RemoteException {
-            return null;
+            Integer block = -1;
+            try {
+                Hdfs.ReadBlockRequest readBlockRequest = Hdfs.ReadBlockRequest.parseFrom(inp);
+                block = readBlockRequest.getBlockNumber();
+            } catch (Exception e) { log(e.toString()); }
+            log("Block " + block.toString() + " has contents: " + new String(chunks.get(block), StandardCharsets.UTF_8));
+            return ProtoMessage.readBlockResponse(chunks.get(block));
         }
 	
     @Override
@@ -61,6 +67,7 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
                 writeBlockRequest = Hdfs.WriteBlockRequest.parseFrom(inp);
             } catch (Exception e) { log(e.toString()); }
             byte[] data = writeBlockRequest.getData(0).toByteArray();
+            chunks.put(writeBlockRequest.getBlockInfo().getBlockNumber(), data);
             log(new String(data, StandardCharsets.UTF_8));
             
             Hdfs.BlockLocations blockLocations = null;

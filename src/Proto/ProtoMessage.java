@@ -5,9 +5,10 @@
  */
 package Proto;
 
-import Proto.Hdfs;
+import NameNode.DataNodeLocation;
 import com.google.protobuf.ByteString;
 import java.util.ArrayList;
+import java.util.List;
 
 
 
@@ -16,6 +17,13 @@ import java.util.ArrayList;
  * @author saksham
  */
 public class ProtoMessage {
+    
+    public static Hdfs.DataNodeLocation.Builder dataNodeLocation(String ip, Integer port) {
+        Hdfs.DataNodeLocation.Builder builder = Hdfs.DataNodeLocation.newBuilder();
+        builder.setIp(ip);
+        builder.setPort(port);
+        return builder;
+    }
     
     public static byte[] openFileRequest(String filename, Boolean forRead) {
         Hdfs.OpenFileRequest.Builder builder = Hdfs.OpenFileRequest.newBuilder();
@@ -28,6 +36,14 @@ public class ProtoMessage {
         Hdfs.OpenFileResponse.Builder builder = Hdfs.OpenFileResponse.newBuilder();
         builder.setStatus(status);
         builder.setHandle(handle);
+        return builder.build().toByteArray();
+    }
+    
+    public static byte[] openFileResponse(Integer status, Integer handle, List<Integer> blocks) {
+        Hdfs.OpenFileResponse.Builder builder = Hdfs.OpenFileResponse.newBuilder();
+        builder.setStatus(status);
+        builder.setHandle(handle);
+        builder.addAllBlockNums(blocks);
         return builder.build().toByteArray();
     }
     
@@ -45,6 +61,7 @@ public class ProtoMessage {
         return builder.build().toByteArray();
     }
     
+    //TODO: Remove this function and use the other writeBlockRequest instead.
     public static byte[] writeBlockRequest(byte[] data, Integer blockNumber, ArrayList<Hdfs.DataNodeLocation> dataNodeLocations) {
         Hdfs.WriteBlockRequest.Builder builder = Hdfs.WriteBlockRequest.newBuilder();
         ByteString bs = ByteString.copyFrom(data);
@@ -61,6 +78,38 @@ public class ProtoMessage {
     public static byte[] writeBlockResponse(Integer status) {
         Hdfs.WriteBlockResponse.Builder builder = Hdfs.WriteBlockResponse.newBuilder();
         builder.setStatus(status);
+        return builder.build().toByteArray();
+    }
+    
+    public static byte[] blockLocationRequest(List<Integer> blocks) {
+        Hdfs.BlockLocationRequest.Builder builder = Hdfs.BlockLocationRequest.newBuilder();
+        builder.addAllBlockNums(blocks);
+        return builder.build().toByteArray();
+    }
+    
+    public static byte[] blockLocationResponse(ArrayList<Integer> blocks, ArrayList<ArrayList<DataNodeLocation>> dnls) {
+        Hdfs.BlockLocationResponse.Builder builder = Hdfs.BlockLocationResponse.newBuilder();
+        for(int i=0; i<blocks.size(); i++) {
+            Hdfs.BlockLocations.Builder locationBuilder = Hdfs.BlockLocations.newBuilder();
+            locationBuilder.setBlockNumber(blocks.get(i));
+            for (DataNodeLocation dnl: dnls.get(i)) {
+                locationBuilder.addLocations(dnl.toProto());
+            }
+            builder.addBlockLocations(locationBuilder);
+        }
+        return builder.build().toByteArray();
+    }
+    
+    public static byte[] readBlockRequest(Integer blockNum) {
+        Hdfs.ReadBlockRequest.Builder builder = Hdfs.ReadBlockRequest.newBuilder();
+        builder.setBlockNumber(blockNum);
+        return builder.build().toByteArray();
+    }
+    
+    public static byte[] readBlockResponse(byte[] data) {
+        Hdfs.ReadBlockResponse.Builder builder = Hdfs.ReadBlockResponse.newBuilder();
+        ByteString bs = ByteString.copyFrom(data);
+        builder.addData(bs);
         return builder.build().toByteArray();
     }
             

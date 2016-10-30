@@ -9,11 +9,14 @@ import NameNode.INameNode;
 import DataNode.IDataNode;
 import Proto.Hdfs;
 import Proto.ProtoMessage;
+import com.google.protobuf.ByteString;
 import java.rmi.Naming;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Random;
 import java.util.Scanner;
 
 /**
@@ -24,6 +27,7 @@ public class Client {
     private static final String NN_NAME = "NameNode";
     private static final String DN_PREFIX = "DataNode";
     private static final Integer CHUNK_SIZE = 10;
+    private static Integer DN_COUNT = -1;
     
     private INameNode nn = null;
     private HashMap<Integer, IDataNode> dns = new HashMap<>();
@@ -36,9 +40,10 @@ public class Client {
     }
     
     public static void main(String args[]) {
+        DN_COUNT = Integer.parseInt(args[1]);
         Client client = new Client();
         client.findnn();
-        client.finddns(Integer.parseInt(args[1]));
+        client.finddns(DN_COUNT);
         client.mainloop();
     }
     
@@ -84,13 +89,27 @@ public class Client {
     }
     
     public Integer openFileForWrite(String filename) {
-        byte[] openRequest = ProtoMessage.openFileRequest(filename, false);
+        byte[] openRequest = ProtoMessage.openFileRequest(filename, Boolean.FALSE);
         Integer handle = -1;
         try {
             byte[] openResponse = nn.openFile(openRequest);
             handle = Hdfs.OpenFileResponse.parseFrom(openResponse).getHandle();
         } catch (Exception e) {}
         return handle;
+    }
+    
+    public List<Hdfs.BlockLocations> openFileForRead(String fileName) {
+        byte[] openRequest = ProtoMessage.openFileRequest(fileName, Boolean.TRUE);
+        List<Hdfs.BlockLocations> blockLocations = null;
+        try {
+            byte[] res = nn.openFile(openRequest);
+            Hdfs.OpenFileResponse openResponse = Hdfs.OpenFileResponse.parseFrom(res);
+            byte[] blockLocationRequest = ProtoMessage.blockLocationRequest(openResponse.getBlockNumsList());
+            byte[] blockLocationResponse = nn.getBlockLocations(blockLocationRequest);
+            Hdfs.BlockLocationResponse response = Hdfs.BlockLocationResponse.parseFrom(blockLocationResponse);
+            blockLocations = response.getBlockLocationsList();
+        } catch (Exception e) { log(e.toString()); }
+        return blockLocations;
     }
     
     public void closeFile(Integer handle) {
@@ -121,12 +140,34 @@ public class Client {
         closeFile(handle);
     }
     
+    public void readFile(String fileName) {
+        ByteString data = ByteString.EMPTY;
+        List<Hdfs.BlockLocations> blockLocations = openFileForRead(fileName);
+        for (Hdfs.BlockLocations block: blockLocations) {
+            Random rand = new Random();
+            Integer dataNodeInd = rand.nextInt(DN_COUNT);
+            Hdfs.DataNodeLocation dnl = block.getLocations(dataNodeInd);
+            Integer dataNodeId = dnl.getPort();
+            log("Pulling data from DN " + dataNodeId.toString());
+            try {
+                byte[] request = ProtoMessage.readBlockRequest(block.getBlockNumber());
+                byte[] response = dns.get(dataNodeId).readBlock(request);
+                Hdfs.ReadBlockResponse readBlockResponse = Hdfs.ReadBlockResponse.parseFrom(response);
+                data = data.concat(readBlockResponse.getData(0));
+            } catch (Exception e) { log(e.toString()); }
+        }
+        System.out.println("File " + fileName + " has contents: " + data.toStringUtf8());
+    }
+    
     public void mainloop() {
         Scanner in = new Scanner(System.in);
         for(;;) {
             String line = in.nextLine();
             String[] ip = line.split(" ");
-            writeFile(ip[0], ip[1].getBytes());
+            if(ip[0].contentEquals("write"))
+                writeFile(ip[1], ip[2].getBytes());
+            else if(ip[0].contentEquals("read"))
+                readFile(ip[1]);
         }
     }
 }
