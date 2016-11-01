@@ -165,7 +165,6 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                     } else {
                         ips.add(dnl.ip);
                         ports.add(dnl.port);
-                        // TODO add in memory
                         addDnLocationToBlock(globalBlockCounter, dnl);
                     }
                 }
@@ -189,7 +188,46 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
 
     @Override
         public byte[] blockReport(byte[] inp) throws RemoteException {
-            return null;
+            // TODO Lock on blockToDnLocations
+            ArrayList<Integer> responseStatuses = new ArrayList<>();
+            try {
+                Hdfs.BlockReportRequest blockReportRequest = Hdfs.BlockReportRequest.parseFrom(inp);
+                DataNodeLocation dnl = new DataNodeLocation(blockReportRequest.getLocation().getIp(), blockReportRequest.getLocation().getPort());
+                ArrayList<Integer> blockNumbers = new ArrayList<Integer>(blockReportRequest.getBlockNumbersList());
+                log("[BlockReport] received from : " + blockReportRequest.getLocation().getPort());
+                for(Integer blockNumber : blockNumbers) {
+                    log("[BlockReport] BlockNumber : " + blockNumber);
+                    if(blockToDnLocations.containsKey(blockNumber) == false) {
+                        ArrayList<DataNodeLocation> l = new ArrayList<>();
+                        l.add(dnl);        
+                        log("[BlockReport] blockNumber not found in blockToDnLocations");
+                        blockToDnLocations.put(blockNumber, l);
+                        log("[BlockReport] adding");
+                        responseStatuses.add(1);
+                    }
+                    else {
+                        ArrayList<DataNodeLocation> dnls = blockToDnLocations.get(blockNumber);
+                        Boolean contains = false;
+                        for(DataNodeLocation x : dnls) {
+                            if(dnl.port == x.port) {
+                                contains = true;
+                                break;
+                            }
+                        }
+                        if(contains == false) {
+                            log("[BlockReport] DnLocation not found in blockToDnLocations");
+                            blockToDnLocations.get(blockNumber).add(dnl);
+                            log("[BlockReport] adding");
+                            responseStatuses.add(1);
+                        }
+                        else {
+                            log("[BlockReport] All OK. Already exists");
+                            responseStatuses.add(1);
+                        }
+                    }
+                }
+            } catch (Exception e) {log(e.toString());}
+            return ProtoMessage.blockReportResponse(responseStatuses);
         }
 
     @Override
