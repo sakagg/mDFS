@@ -15,16 +15,23 @@ CLIENT_CODE_DIR="Client"
 PROTO_CODE_DIR="Proto"
 DEPENDENCIES="ExternalLibs/protobuf-java-3.0.0.jar"
 COMPILED_DIR="Compiled"
-NUM_DNS=2
+NUM_DNS=4
 
-echo "Compiling..."
+kill $(ps aux | grep 'NameNode' | awk '{print $2}')
+kill $(ps aux | grep 'DataNode' | awk '{print $2}')
 
-javac -classpath $DEPENDENCIES:$CODE_DIR $CODE_DIR/$PROTO_CODE_DIR/*.java -d $COMPILED_DIR
-javac -classpath $DEPENDENCIES:$CODE_DIR $CODE_DIR/$NN_CODE_DIR/*.java -d $COMPILED_DIR
-javac -classpath $DEPENDENCIES:$CODE_DIR $CODE_DIR/$DN_CODE_DIR/*.java -d $COMPILED_DIR
-javac -classpath $DEPENDENCIES:$CODE_DIR $CODE_DIR/$CLIENT_CODE_DIR/*.java -d $COMPILED_DIR
+# Use -c flag to compile
+if [[ $# -ge 1 && "$1" == "-c" ]]; then
 
-echo "Compiled."
+    echo "Compiling..."
+
+    javac -classpath $DEPENDENCIES:$CODE_DIR $CODE_DIR/$PROTO_CODE_DIR/*.java -d $COMPILED_DIR
+    javac -classpath $DEPENDENCIES:$CODE_DIR $CODE_DIR/$NN_CODE_DIR/*.java -d $COMPILED_DIR
+    javac -classpath $DEPENDENCIES:$CODE_DIR $CODE_DIR/$DN_CODE_DIR/*.java -d $COMPILED_DIR
+    javac -classpath $DEPENDENCIES:$CODE_DIR $CODE_DIR/$CLIENT_CODE_DIR/*.java -d $COMPILED_DIR
+    echo "Compiled."
+
+fi
 
 java -classpath $DEPENDENCIES:$COMPILED_DIR $NN_CODE_DIR/NameNode --numdn $NUM_DNS & # Name Node
 

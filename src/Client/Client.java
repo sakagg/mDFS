@@ -88,6 +88,25 @@ public class Client {
         }
     }
     
+    public void listFiles() {
+        byte[] inp = "*".getBytes();
+        try {
+            byte[] res = nn.list(inp);
+            Hdfs.ListFilesResponse listFilesResponse = Hdfs.ListFilesResponse.parseFrom(res);
+            if(listFilesResponse.getStatus() == 1)
+            {
+                for(String fileName : listFilesResponse.getFileNamesList()) {
+                    System.out.println(fileName);
+                }
+                System.out.println("");
+            }
+            else {
+                System.err.println("Some Error Occured During Listing File");
+            }
+        } catch (Exception e) { log(e.toString()); }
+        
+    }
+    
     public Integer openFileForWrite(String filename) {
         byte[] openRequest = ProtoMessage.openFileRequest(filename, Boolean.FALSE);
         Integer handle = -1;
@@ -104,10 +123,12 @@ public class Client {
         try {
             byte[] res = nn.openFile(openRequest);
             Hdfs.OpenFileResponse openResponse = Hdfs.OpenFileResponse.parseFrom(res);
-            byte[] blockLocationRequest = ProtoMessage.blockLocationRequest(openResponse.getBlockNumsList());
-            byte[] blockLocationResponse = nn.getBlockLocations(blockLocationRequest);
-            Hdfs.BlockLocationResponse response = Hdfs.BlockLocationResponse.parseFrom(blockLocationResponse);
-            blockLocations = response.getBlockLocationsList();
+            if(openResponse.getStatus() == 1) {
+                byte[] blockLocationRequest = ProtoMessage.blockLocationRequest(openResponse.getBlockNumsList());
+                byte[] blockLocationResponse = nn.getBlockLocations(blockLocationRequest);
+                Hdfs.BlockLocationResponse response = Hdfs.BlockLocationResponse.parseFrom(blockLocationResponse);
+                blockLocations = response.getBlockLocationsList();
+            }
         } catch (Exception e) { log(e.toString()); }
         return blockLocations;
     }
@@ -143,20 +164,25 @@ public class Client {
     public void readFile(String fileName) {
         ByteString data = ByteString.EMPTY;
         List<Hdfs.BlockLocations> blockLocations = openFileForRead(fileName);
-        for (Hdfs.BlockLocations block: blockLocations) {
-            Random rand = new Random();
-            Integer dataNodeInd = rand.nextInt(DN_COUNT);
-            Hdfs.DataNodeLocation dnl = block.getLocations(dataNodeInd);
-            Integer dataNodeId = dnl.getPort();
-            log("Pulling data from DN " + dataNodeId.toString());
-            try {
-                byte[] request = ProtoMessage.readBlockRequest(block.getBlockNumber());
-                byte[] response = dns.get(dataNodeId).readBlock(request);
-                Hdfs.ReadBlockResponse readBlockResponse = Hdfs.ReadBlockResponse.parseFrom(response);
-                data = data.concat(readBlockResponse.getData(0));
-            } catch (Exception e) { log(e.toString()); }
+        if(blockLocations != null) {
+            for (Hdfs.BlockLocations block: blockLocations) {
+                Random rand = new Random();
+                Integer dataNodeInd = rand.nextInt(block.getLocationsCount());
+                Hdfs.DataNodeLocation dnl = block.getLocations(dataNodeInd);
+                Integer dataNodeId = dnl.getPort();
+                log("Pulling data from DN " + dataNodeId.toString());
+                try {
+                    byte[] request = ProtoMessage.readBlockRequest(block.getBlockNumber());
+                    byte[] response = dns.get(dataNodeId).readBlock(request);
+                    Hdfs.ReadBlockResponse readBlockResponse = Hdfs.ReadBlockResponse.parseFrom(response);
+                    data = data.concat(readBlockResponse.getData(0));
+                } catch (Exception e) { log(e.toString()); }
+            }
+            System.out.println("File " + fileName + " has contents: " + data.toStringUtf8());
         }
-        System.out.println("File " + fileName + " has contents: " + data.toStringUtf8());
+        else {
+            System.out.println("File : " + fileName + " does not exist.");
+        }
     }
     
     public void mainloop() {
@@ -168,6 +194,8 @@ public class Client {
                 writeFile(ip[1], ip[2].getBytes());
             else if(ip[0].contentEquals("read"))
                 readFile(ip[1]);
+            else if(ip[0].contentEquals("list"))
+                listFiles();
         }
     }
 }

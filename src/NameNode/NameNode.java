@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Random;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -108,6 +109,8 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                 }
                 else {
                     String filename = openFileRequest.getFileName();
+                    if(fileNameToHandle.containsKey(filename) == false)
+                        return ProtoMessage.openFileResponse(0, -1);
                     Integer handle = fileNameToHandle.get(filename);
                     log("Opening file '"
                             + openFileRequest.getFileName()
@@ -180,7 +183,8 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
 
     @Override
         public byte[] list(byte[] inp) throws RemoteException {
-            return null;
+            Set<String> keys = fileNameToHandle.keySet();
+            return ProtoMessage.listFileResponse(1, keys);
         }
 
     @Override
