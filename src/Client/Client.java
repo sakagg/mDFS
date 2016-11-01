@@ -93,14 +93,12 @@ public class Client {
         try {
             byte[] res = nn.list(inp);
             Hdfs.ListFilesResponse listFilesResponse = Hdfs.ListFilesResponse.parseFrom(res);
-            if(listFilesResponse.getStatus() == 1)
-            {
+            if(listFilesResponse.getStatus() == 1) {
                 for(String fileName : listFilesResponse.getFileNamesList()) {
                     System.out.println(fileName);
                 }
                 System.out.println("");
-            }
-            else {
+            } else {
                 System.err.println("Some Error Occured During Listing File");
             }
         } catch (Exception e) { log(e.toString()); }

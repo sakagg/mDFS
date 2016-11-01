@@ -144,7 +144,7 @@ public class ProtoMessage {
         return builder.build().toByteArray();
     }
     
-    public static byte[] blockReportRequest(Integer dataNodeId, String ip, Integer port, Set<Integer> blockNumbers) {
+    public static byte[] blockReportRequest(Integer dataNodeId, String ip, Integer port, List<Integer> blockNumbers) {
         Hdfs.BlockReportRequest.Builder builder = Hdfs.BlockReportRequest.newBuilder();
         builder.setId(dataNodeId);
         builder.setLocation(dataNodeLocation(ip, port));

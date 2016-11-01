@@ -12,9 +12,7 @@ import DataNode.IDataNode;
 import com.google.protobuf.InvalidProtocolBufferException;
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.FileWriter;
-import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
@@ -41,25 +39,20 @@ import java.util.logging.Logger;
 
 public class NameNode extends UnicastRemoteObject implements INameNode {
 
+    private static final String DIRECTORY = "Data/NameNode/";
     private static final String NN_NAME = "NameNode";
     private static final String DN_PREFIX = "DataNode";
-    private static Integer DN_COUNT = -1;
     private static final Integer REP_FACTOR = 2; //Replication Factor in DNs
 
-    Integer globalBlockCounter = 0;
-    Integer globalFileCounter = 0;
+    private static Integer DN_COUNT = -1;
+    private static Integer globalBlockCounter = 0;
+    private static Integer globalFileCounter = 0;
 
     private static final HashMap<Integer, IDataNode> dns = new HashMap<>();
     private static final ArrayList<DataNodeLocation> dnLocations = new ArrayList<>();
     private static final HashMap<String, Integer> fileNameToHandle = new HashMap<>();
     private static final HashMap<Integer, ArrayList<Integer> > handleToBlocks = new HashMap<>();
     private static final HashMap<Integer, ArrayList<DataNodeLocation> > blockToDnLocations = new HashMap<>();
-    
-    private static final FilenameFilter textFilter = new FilenameFilter() {
-        public boolean accept(File dir, String name) {
-            return name.toLowerCase().endsWith(".txt");
-        }
-    };
     
     NameNode() throws RemoteException {
         super();
@@ -72,16 +65,22 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
         System.out.println(op + s);
     }
     
-    private void createFile(String fileString) throws IOException {
-        String fileName = "Compiled/NameNode/" + globalFileCounter.toString() + ".txt";
-        PrintWriter pw = new PrintWriter(new BufferedWriter(new FileWriter(fileName, true)));
+    private Integer createFile(String fileName) throws IOException {
+        Integer handle = globalFileCounter;
+        globalFileCounter++;
+        fileNameToHandle.put(fileName, handle);
+        
+        String blockFile = DIRECTORY + handle.toString() + ".txt";
+        PrintWriter pw = new PrintWriter(new BufferedWriter(new FileWriter(blockFile, true)));
         log("Writing to file " + fileName);
-        pw.append(fileString + "\n");
-        log("Writing " + fileString);
+        pw.append(fileName + "\n");
+        log("Writing " + fileName);
         pw.close();
+        
+        return handle;
     }
     
-    private void addBlockToHandle(Integer handle, Integer blockNumber) {
+    private void addBlockToHandle(Integer handle, Integer blockNumber) throws IOException {
         if(handleToBlocks.containsKey(handle)) {
             handleToBlocks.get(handle).add(blockNumber);
         }
@@ -90,10 +89,8 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
             l.add(blockNumber);
             handleToBlocks.put(handle, l);
         }
-    }
-    
-    private void persistAddBlockToHandle(Integer handle, Integer blockNumber) throws IOException {
-        String fileName = "Compiled/NameNode/" + handle.toString() + ".txt";
+        
+        String fileName = DIRECTORY + handle.toString() + ".txt";
         PrintWriter pw = new PrintWriter(new BufferedWriter(new FileWriter(fileName, true)));
         log("Writing to file " + fileName);
         pw.append(blockNumber.toString() + "\n");
@@ -103,8 +100,8 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
     
     private void restoreStateFromDisk() throws IOException {
         log("persisting state from disk");
-        File dir = new File("Compiled/NameNode/");
-        File[] files = dir.listFiles(textFilter);
+        File dir = new File(DIRECTORY);
+        File[] files = dir.listFiles();
         for (File file : files) {
             if (!file.isDirectory()) {
                 String handleTxt = file.getName();
@@ -117,10 +114,11 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                 if(numberOfLines > 1) {
                     fileNameToHandle.put(lines.get(0), handle);
                     log("fileName : " + lines.get(0));
-                    for(Integer i=1; i<numberOfLines; i++) {
-                        addBlockToHandle(handle, Integer.parseInt(lines.get(i)));
-                        log("block : " + Integer.parseInt(lines.get(i)));
-                    }
+                    ArrayList<Integer> blocks = new ArrayList<>();
+                    for(Integer i=1; i<numberOfLines; i++)
+                        blocks.add(Integer.parseInt(lines.get(i)));
+                    log("blocks : " + blocks.toString());
+                    handleToBlocks.put(handle, blocks);
                 }
             }
         }
@@ -166,11 +164,9 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                             + openFileRequest.getFileName()
                             + "' for Writing with handle "
                             + globalFileCounter.toString());
-                    createFile(openFileRequest.getFileName());
+                    Integer handle = createFile(openFileRequest.getFileName());
                     // ^ TODO Check for errors while creating file and send response accordingly
-                    fileNameToHandle.put(openFileRequest.getFileName(), globalFileCounter);
-                    byte[] openFileResponse = ProtoMessage.openFileResponse(1, globalFileCounter);
-                    globalFileCounter++;
+                    byte[] openFileResponse = ProtoMessage.openFileResponse(1, handle);
                     return openFileResponse;
                 }
                 else {
@@ -221,7 +217,6 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                 assignBlockRequest = Hdfs.AssignBlockRequest.parseFrom(inp);
                 Integer handle = assignBlockRequest.getHandle();
                 addBlockToHandle(handle, globalBlockCounter);
-                persistAddBlockToHandle(handle, globalBlockCounter);
                 ArrayList<String> ips = new ArrayList<>();
                 ArrayList<Integer> ports = new ArrayList<>();
                 for(int i=0; i<REP_FACTOR; i++)
@@ -246,8 +241,8 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
             } catch (InvalidProtocolBufferException ex) {
                 Logger.getLogger(NameNode.class.getName()).log(Level.SEVERE, null, ex);
             } catch (IOException ex) {
-            Logger.getLogger(NameNode.class.getName()).log(Level.SEVERE, null, ex);
-        }
+                Logger.getLogger(NameNode.class.getName()).log(Level.SEVERE, null, ex);
+            }
             return ret;
         }
 
