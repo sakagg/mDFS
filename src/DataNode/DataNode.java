@@ -8,13 +8,20 @@ package DataNode;
 import NameNode.INameNode;
 import Proto.Hdfs;
 import Proto.ProtoMessage;
+import java.io.File;
+import java.io.FilenameFilter;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.rmi.Naming;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -30,6 +37,12 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
     private static final HashMap<Integer, IDataNode> dns = new HashMap<>();
     private static HashMap<Integer, byte[]> chunks = new HashMap<>();
     
+    private static final FilenameFilter textFilter = new FilenameFilter() {
+        public boolean accept(File dir, String name) {
+            return name.toLowerCase().startsWith(myId + "_") && name.toLowerCase().endsWith(".txt");
+        }
+    };
+    
     DataNode() throws RemoteException {
         super();
     }
@@ -41,15 +54,46 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
         System.out.println(op + s);
     }
     
+    public void persistWriteBlock(Integer blockNumber, byte[] data) throws IOException {
+        String fileName = "Compiled/DataNode/" + myId + "_" + blockNumber.toString() + ".txt";
+        Path path = Paths.get(fileName);
+        log("Writing to file " + fileName);
+        Files.write(path, data);
+        log("Writing " + blockNumber.toString());
+    }
+    
+    private void restoreStateFromDisk() throws IOException {
+        log("persisting state from disk");
+        File dir = new File("Compiled/DataNode/");
+        File[] files = dir.listFiles(textFilter);
+        for (File file : files) {
+            if (!file.isDirectory()) {
+                String myId_blockTxt = file.getName();
+                log(myId_blockTxt);
+                Integer blockNumber = Integer.parseInt(myId_blockTxt.substring(myId_blockTxt.indexOf("_")+1, myId_blockTxt.length() - 4));
+                log("blockNumber " + blockNumber);
+                List<String> lines = Files.readAllLines(Paths.get(file.getCanonicalPath()), StandardCharsets.UTF_8);
+                
+                Integer numberOfLines = lines.size();
+                if(numberOfLines == 1) {
+                    chunks.put(blockNumber, lines.get(0).getBytes());
+                    log("contents : " + lines.get(0));
+                }
+            }
+        }
+    }
+    
     public static void main (String args[]) {
         myId = Integer.parseInt(args[1]);
         DN_COUNT = Integer.parseInt(args[3]);
         try {
             DataNode dn = new DataNode();
+            dn.restoreStateFromDisk();
             Naming.rebind("rmi://localhost/" + DN_PREFIX + myId.toString(), dn);
             log("Bound to RMI");
             dn.finddns(DN_COUNT);
             dn.findnn();
+            dn.reportBlocks();
         } catch (Exception e) { log(e.toString()); }
         for(;;) {}
     }
@@ -72,7 +116,11 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
                 writeBlockRequest = Hdfs.WriteBlockRequest.parseFrom(inp);
             } catch (Exception e) { log(e.toString()); }
             byte[] data = writeBlockRequest.getData(0).toByteArray();
-            chunks.put(writeBlockRequest.getBlockInfo().getBlockNumber(), data);
+            Integer blockNumber = writeBlockRequest.getBlockInfo().getBlockNumber();
+            chunks.put(blockNumber, data);
+            try {
+                persistWriteBlock(blockNumber, data);
+            } catch (IOException e) {log(e.toString());} // TODO return status 0
             log(new String(data, StandardCharsets.UTF_8));
             
             Hdfs.BlockLocations blockLocations = null;
@@ -85,7 +133,7 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
                 for(Integer i=0; i<numberofLocations; i++)
                     dataNodeLocations.add(blockLocations.getLocations(i));
                 dataNodeLocations.remove(0);
-                Integer blockNumber = blockLocations.getBlockNumber();
+                blockNumber = blockLocations.getBlockNumber();
                 byte[] casecadedwriteBlockRequest = ProtoMessage.writeBlockRequest(data, blockNumber, dataNodeLocations);
                 IDataNode dn = dns.get(blockLocations.getLocations(1).getPort());
                 log("Cascading request for blockNumber " + blockNumber + " to datanode: " + blockLocations.getLocations(1).getPort());
