@@ -118,7 +118,7 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                     fileNameToHandle.put(lines.get(0), handle);
                     log("fileName : " + lines.get(0));
                     for(Integer i=1; i<numberOfLines; i++) {
-                        addBlockToHandle(Integer.parseInt(lines.get(i)), handle);
+                        addBlockToHandle(handle, Integer.parseInt(lines.get(i)));
                         log("block : " + Integer.parseInt(lines.get(i)));
                     }
                 }
@@ -141,6 +141,8 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
         try {
             NameNode nn = new NameNode();
             nn.restoreStateFromDisk();
+            log(fileNameToHandle.toString());
+            log(handleToBlocks.toString());
             DN_COUNT = Integer.parseInt(args[1]);
             try {
                 LocateRegistry.createRegistry(1099);
