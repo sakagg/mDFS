@@ -7,17 +7,25 @@ package Client;
 
 import NameNode.INameNode;
 import DataNode.IDataNode;
+import NameNode.NameNode;
+import static NameNode.NameNode.log;
 import Proto.Hdfs;
 import Proto.ProtoMessage;
 import com.google.protobuf.ByteString;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
 import java.rmi.Naming;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Properties;
 import java.util.Random;
 import java.util.Scanner;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  *
@@ -28,6 +36,7 @@ public class Client {
     private static final String DN_PREFIX = "DataNode";
     private static final Integer CHUNK_SIZE = 10;
     private static Integer DN_COUNT = -1;
+    private static String rmiHost = "";
     
     private INameNode nn = null;
     private HashMap<Integer, IDataNode> dns = new HashMap<>();
@@ -40,6 +49,16 @@ public class Client {
     }
     
     public static void main(String args[]) {
+        Properties props = new Properties();
+        try {
+            props.load(new BufferedReader(new FileReader("config.properties")));
+        } catch (IOException ex) {
+            Logger.getLogger(NameNode.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        
+        rmiHost = props.getProperty("rmiserver.host", "localhost")
+                + ":" + props.getProperty("rmiserver.port", "1099");
+
         DN_COUNT = Integer.parseInt(args[1]);
         Client client = new Client();
         client.findnn();
@@ -51,7 +70,7 @@ public class Client {
         while(nn == null)
         {
             try {
-                nn = (INameNode) Naming.lookup("rmi://localhost/" + NN_NAME);
+                nn = (INameNode) Naming.lookup("rmi://" + rmiHost + "/" + NN_NAME);
                 log("Found Name Node");
             } catch (Exception e) {}
             if (nn == null)
@@ -70,7 +89,7 @@ public class Client {
             for(Integer i: leftPeers) {
                 IDataNode dn;
                 try {
-                    dn = (IDataNode) Naming.lookup("rmi://localhost/" + DN_PREFIX + i.toString());
+                    dn = (IDataNode) Naming.lookup("rmi://" + rmiHost + "/" + DN_PREFIX + i.toString());
                 } catch (Exception e) {
                     continue;
                 }
