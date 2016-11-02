@@ -10,6 +10,14 @@ import Proto.ProtoMessage;
 
 import DataNode.IDataNode;
 import com.google.protobuf.InvalidProtocolBufferException;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.rmi.Naming;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
@@ -17,6 +25,7 @@ import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Random;
 import java.util.Set;
 import java.util.logging.Level;
@@ -30,20 +39,21 @@ import java.util.logging.Logger;
 
 public class NameNode extends UnicastRemoteObject implements INameNode {
 
+    private static final String DIRECTORY = "Data/NameNode/";
     private static final String NN_NAME = "NameNode";
     private static final String DN_PREFIX = "DataNode";
-    private static Integer DN_COUNT = -1;
     private static final Integer REP_FACTOR = 2; //Replication Factor in DNs
 
-    Integer globalBlockCounter = 0;
-    Integer globalFileCounter = 0;
+    private static Integer DN_COUNT = -1;
+    private static Integer globalBlockCounter = 0;
+    private static Integer globalFileCounter = 0;
 
     private static final HashMap<Integer, IDataNode> dns = new HashMap<>();
     private static final ArrayList<DataNodeLocation> dnLocations = new ArrayList<>();
     private static final HashMap<String, Integer> fileNameToHandle = new HashMap<>();
     private static final HashMap<Integer, ArrayList<Integer> > handleToBlocks = new HashMap<>();
     private static final HashMap<Integer, ArrayList<DataNodeLocation> > blockToDnLocations = new HashMap<>();
-
+    
     NameNode() throws RemoteException {
         super();
     }
@@ -55,7 +65,22 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
         System.out.println(op + s);
     }
     
-    private void addBlockToHandle(Integer handle, Integer blockNumber) {
+    private Integer createFile(String fileName) throws IOException {
+        Integer handle = globalFileCounter;
+        globalFileCounter++;
+        fileNameToHandle.put(fileName, handle);
+        
+        String blockFile = DIRECTORY + handle.toString() + ".txt";
+        PrintWriter pw = new PrintWriter(new BufferedWriter(new FileWriter(blockFile, true)));
+        log("Writing to file " + fileName);
+        pw.append(fileName + "\n");
+        log("Writing " + fileName);
+        pw.close();
+        
+        return handle;
+    }
+    
+    private void addBlockToHandle(Integer handle, Integer blockNumber) throws IOException {
         if(handleToBlocks.containsKey(handle)) {
             handleToBlocks.get(handle).add(blockNumber);
         }
@@ -63,6 +88,39 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
             ArrayList<Integer> l = new ArrayList<>();
             l.add(blockNumber);
             handleToBlocks.put(handle, l);
+        }
+        
+        String fileName = DIRECTORY + handle.toString() + ".txt";
+        PrintWriter pw = new PrintWriter(new BufferedWriter(new FileWriter(fileName, true)));
+        log("Writing to file " + fileName);
+        pw.append(blockNumber.toString() + "\n");
+        log("Writing " + blockNumber.toString());
+        pw.close();
+    }
+    
+    private void restoreStateFromDisk() throws IOException {
+        log("persisting state from disk");
+        File dir = new File(DIRECTORY);
+        File[] files = dir.listFiles();
+        for (File file : files) {
+            if (!file.isDirectory()) {
+                String handleTxt = file.getName();
+                log(handleTxt);
+                Integer handle = Integer.parseInt(handleTxt.substring(0, handleTxt.length() - 4));
+
+                List<String> lines = Files.readAllLines(Paths.get(file.getCanonicalPath()), StandardCharsets.UTF_8);
+                
+                Integer numberOfLines = lines.size();
+                if(numberOfLines > 1) {
+                    fileNameToHandle.put(lines.get(0), handle);
+                    log("fileName : " + lines.get(0));
+                    ArrayList<Integer> blocks = new ArrayList<>();
+                    for(Integer i=1; i<numberOfLines; i++)
+                        blocks.add(Integer.parseInt(lines.get(i)));
+                    log("blocks : " + blocks.toString());
+                    handleToBlocks.put(handle, blocks);
+                }
+            }
         }
     }
     
@@ -78,13 +136,17 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
     }
     
     public static void main(String args[]) {
-        DN_COUNT = Integer.parseInt(args[1]);
-        try {
-            LocateRegistry.createRegistry(1099);
-            log("Started Registry");
-        } catch (Exception e) { log(e.toString()); }
         try {
             NameNode nn = new NameNode();
+            nn.restoreStateFromDisk();
+            log(fileNameToHandle.toString());
+            log(handleToBlocks.toString());
+            DN_COUNT = Integer.parseInt(args[1]);
+            try {
+                LocateRegistry.createRegistry(1099);
+                log("Started Registry");
+            } catch (Exception e) { log(e.toString()); }
+
             Naming.rebind("rmi://localhost/"+NN_NAME, nn);
             log("Bound to RMI");
             nn.finddns(DN_COUNT);
@@ -102,9 +164,9 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                             + openFileRequest.getFileName()
                             + "' for Writing with handle "
                             + globalFileCounter.toString());
-                    fileNameToHandle.put(openFileRequest.getFileName(), globalFileCounter);
-                    byte[] openFileResponse = ProtoMessage.openFileResponse(1, globalFileCounter);
-                    globalFileCounter++;
+                    Integer handle = createFile(openFileRequest.getFileName());
+                    // ^ TODO Check for errors while creating file and send response accordingly
+                    byte[] openFileResponse = ProtoMessage.openFileResponse(1, handle);
                     return openFileResponse;
                 }
                 else {
@@ -122,6 +184,8 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                 }
             } catch (InvalidProtocolBufferException ex) {
                 Logger.getLogger(NameNode.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (IOException ex) {
+            Logger.getLogger(NameNode.class.getName()).log(Level.SEVERE, null, ex);
             }
             return null;
         }
@@ -165,7 +229,6 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                     } else {
                         ips.add(dnl.ip);
                         ports.add(dnl.port);
-                        // TODO add in memory
                         addDnLocationToBlock(globalBlockCounter, dnl);
                     }
                 }
@@ -176,6 +239,8 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                 ret = ProtoMessage.assignBlockResponse(1, globalBlockCounter, ips, ports);
                 globalBlockCounter++;
             } catch (InvalidProtocolBufferException ex) {
+                Logger.getLogger(NameNode.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (IOException ex) {
                 Logger.getLogger(NameNode.class.getName()).log(Level.SEVERE, null, ex);
             }
             return ret;
@@ -189,7 +254,44 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
 
     @Override
         public byte[] blockReport(byte[] inp) throws RemoteException {
-            return null;
+            // TODO Lock on blockToDnLocations
+            ArrayList<Integer> responseStatuses = new ArrayList<>();
+            try {
+                Hdfs.BlockReportRequest blockReportRequest = Hdfs.BlockReportRequest.parseFrom(inp);
+                DataNodeLocation dnl = new DataNodeLocation(blockReportRequest.getLocation().getIp(), blockReportRequest.getLocation().getPort());
+                ArrayList<Integer> blockNumbers = new ArrayList<Integer>(blockReportRequest.getBlockNumbersList());
+                log("[BlockReport] received from : " + blockReportRequest.getLocation().getPort());
+                for(Integer blockNumber : blockNumbers) {
+                    log("[BlockReport] BlockNumber : " + blockNumber);
+                    if(blockToDnLocations.containsKey(blockNumber) == false) {
+                        log("[BlockReport] blockNumber not found in blockToDnLocations");
+                        addDnLocationToBlock(blockNumber, dnl);
+                        log("[BlockReport] adding");
+                        responseStatuses.add(1);
+                    }
+                    else {
+                        ArrayList<DataNodeLocation> dnls = blockToDnLocations.get(blockNumber);
+                        Boolean contains = false;
+                        for(DataNodeLocation x : dnls) {
+                            if(dnl.port == x.port) {
+                                contains = true;
+                                break;
+                            }
+                        }
+                        if(contains == false) {
+                            log("[BlockReport] DnLocation not found in blockToDnLocations");
+                            addDnLocationToBlock(blockNumber, dnl);
+                            log("[BlockReport] adding");
+                            responseStatuses.add(1);
+                        }
+                        else {
+                            log("[BlockReport] All OK. Already exists");
+                            responseStatuses.add(1);
+                        }
+                    }
+                }
+            } catch (Exception e) {log(e.toString());}
+            return ProtoMessage.blockReportResponse(responseStatuses);
         }
 
     @Override

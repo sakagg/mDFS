@@ -77,13 +77,6 @@ public class ProtoMessage {
         return builder.build().toByteArray();
     }
     
-    public static byte[] listFileResponse(Integer status, Set<String> fileNames) {
-        Hdfs.ListFilesResponse.Builder builder = Hdfs.ListFilesResponse.newBuilder();
-        builder.setStatus(status);
-        builder.addAllFileNames(fileNames);
-        return builder.build().toByteArray();
-    }
-    
     public static byte[] writeBlockResponse(Integer status) {
         Hdfs.WriteBlockResponse.Builder builder = Hdfs.WriteBlockResponse.newBuilder();
         builder.setStatus(status);
@@ -141,6 +134,27 @@ public class ProtoMessage {
             blockLocationsBuilder.addLocations(dataNodeLocationBuilder);
         }
         builder.setNewBlock(blockLocationsBuilder);
+        return builder.build().toByteArray();
+    }
+    
+    public static byte[] listFileResponse(Integer status, Set<String> fileNames) {
+        Hdfs.ListFilesResponse.Builder builder = Hdfs.ListFilesResponse.newBuilder();
+        builder.setStatus(status);
+        builder.addAllFileNames(fileNames);
+        return builder.build().toByteArray();
+    }
+    
+    public static byte[] blockReportRequest(Integer dataNodeId, String ip, Integer port, List<Integer> blockNumbers) {
+        Hdfs.BlockReportRequest.Builder builder = Hdfs.BlockReportRequest.newBuilder();
+        builder.setId(dataNodeId);
+        builder.setLocation(dataNodeLocation(ip, port));
+        builder.addAllBlockNumbers(blockNumbers);
+        return builder.build().toByteArray();
+    }
+    
+    public static byte[] blockReportResponse(ArrayList<Integer> responseStatuses) {
+        Hdfs.BlockReportResponse.Builder builder = Hdfs.BlockReportResponse.newBuilder();
+        builder.addAllStatus(responseStatuses);
         return builder.build().toByteArray();
     }
 }

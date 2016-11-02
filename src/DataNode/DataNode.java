@@ -5,26 +5,39 @@
  */
 package DataNode;
 
+import NameNode.INameNode;
 import Proto.Hdfs;
 import Proto.ProtoMessage;
+import java.io.File;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.rmi.Naming;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 
 /**
  *
  * @author saksham
  */
 public class DataNode extends UnicastRemoteObject implements IDataNode {
+    
+    private static final String DIRECTORY_PREFIX = "Data/DataNode/";
+    private static final String NN_NAME = "NameNode";
     private static final String DN_PREFIX = "DataNode";
+    
     private static Integer myId = -1;
     private static Integer DN_COUNT = -1;
+    private static String Directory;
+    
+    private INameNode nn = null;
     private static final HashMap<Integer, IDataNode> dns = new HashMap<>();
-    private static HashMap<Integer, byte[]> chunks = new HashMap<>();
     
     DataNode() throws RemoteException {
         super();
@@ -37,14 +50,47 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
         System.out.println(op + s);
     }
     
+    public void putBlock(Integer blockNumber, byte[] data) throws IOException {
+        String fileName = Directory + blockNumber.toString();
+        Path path = Paths.get(fileName);
+        log("Writing to file " + fileName);
+        Files.write(path, data);
+        log("Writing " + blockNumber.toString());
+    }
+    
+    private byte[] getBlock(Integer blockNumber) throws IOException {
+        String filename = Directory + blockNumber.toString();
+        Path path = Paths.get(filename);
+        return Files.readAllBytes(path);
+    }
+    
+    private ArrayList<Integer> getAllBlocks() {
+        File dir = new File(Directory);
+        File[] files = dir.listFiles();
+        ArrayList<Integer> blockNums = new ArrayList<>(); 
+        for (File file: files) {
+            if (!file.isDirectory()) {
+                String filename = file.getName();
+                Integer blockNum = Integer.parseInt(filename);
+                blockNums.add(blockNum);
+            }
+        }
+        return blockNums;
+    }
+    
     public static void main (String args[]) {
         myId = Integer.parseInt(args[1]);
         DN_COUNT = Integer.parseInt(args[3]);
+        
+        Directory = DIRECTORY_PREFIX + myId + "/";
+        
         try {
             DataNode dn = new DataNode();
             Naming.rebind("rmi://localhost/" + DN_PREFIX + myId.toString(), dn);
             log("Bound to RMI");
             dn.finddns(DN_COUNT);
+            dn.findnn();
+            dn.reportBlocks();
         } catch (Exception e) { log(e.toString()); }
         for(;;) {}
     }
@@ -52,12 +98,14 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
     @Override
         public byte[] readBlock(byte[] inp) throws RemoteException {
             Integer block = -1;
+            byte[] data = null;
             try {
                 Hdfs.ReadBlockRequest readBlockRequest = Hdfs.ReadBlockRequest.parseFrom(inp);
                 block = readBlockRequest.getBlockNumber();
+                data = getBlock(block);
             } catch (Exception e) { log(e.toString()); }
-            log("Block " + block.toString() + " has contents: " + new String(chunks.get(block), StandardCharsets.UTF_8));
-            return ProtoMessage.readBlockResponse(chunks.get(block));
+            log("Block " + block.toString() + " has contents: " + new String(data, StandardCharsets.UTF_8));
+            return ProtoMessage.readBlockResponse(data);
         }
 	
     @Override
@@ -67,7 +115,10 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
                 writeBlockRequest = Hdfs.WriteBlockRequest.parseFrom(inp);
             } catch (Exception e) { log(e.toString()); }
             byte[] data = writeBlockRequest.getData(0).toByteArray();
-            chunks.put(writeBlockRequest.getBlockInfo().getBlockNumber(), data);
+            Integer blockNumber = writeBlockRequest.getBlockInfo().getBlockNumber();
+            try {
+                putBlock(blockNumber, data);
+            } catch (IOException e) {log(e.toString());} // TODO return status 0
             log(new String(data, StandardCharsets.UTF_8));
             
             Hdfs.BlockLocations blockLocations = null;
@@ -79,9 +130,8 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
                 ArrayList<Hdfs.DataNodeLocation> dataNodeLocations = new ArrayList<>();
                 for(Integer i=0; i<numberofLocations; i++)
                     dataNodeLocations.add(blockLocations.getLocations(i));
-                
                 dataNodeLocations.remove(0);
-                Integer blockNumber = blockLocations.getBlockNumber();
+                blockNumber = blockLocations.getBlockNumber();
                 byte[] casecadedwriteBlockRequest = ProtoMessage.writeBlockRequest(data, blockNumber, dataNodeLocations);
                 IDataNode dn = dns.get(blockLocations.getLocations(1).getPort());
                 log("Cascading request for blockNumber " + blockNumber + " to datanode: " + blockLocations.getLocations(1).getPort());
@@ -90,6 +140,24 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
             return ProtoMessage.writeBlockResponse(1);
         }
     
+    public void reportBlocks() {
+        List<Integer> blockNumbers = getAllBlocks();
+        byte[] req = ProtoMessage.blockReportRequest(myId, "", myId, blockNumbers);
+        
+        try {
+            byte[] res = nn.blockReport(req);
+            log("[BlockReport] Sending : " + blockNumbers);
+            Hdfs.BlockReportResponse blockReportResponse = Hdfs.BlockReportResponse.parseFrom(res);
+            ArrayList<Integer> responseStatuses = new ArrayList<Integer> (blockReportResponse.getStatusList());
+            Integer i = 0;
+            for(Integer blockNumber : blockNumbers) {
+                Integer responseStatus = responseStatuses.get(i);
+                i++;
+                log("[BlockReport] response status of " + blockNumber + " : " + responseStatus);
+            }
+        } catch (Exception e) { log(e.toString()); }
+    }    
+        
     public void finddns(Integer numberDNs) {
         HashSet<Integer> leftPeers = new HashSet<>();
         for(int i=0; i<numberDNs; i++)
@@ -116,4 +184,19 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
             } catch (Exception E) {}
         }
     }
+    
+    public void findnn() {
+        while(nn == null)
+        {
+            try {
+                nn = (INameNode) Naming.lookup("rmi://localhost/" + NN_NAME);
+                log("Found Name Node");
+            } catch (Exception e) {}
+            if (nn == null)
+                try {
+                    Thread.sleep(1000);
+                } catch (Exception e) {}
+        }
+    }
+    
 }

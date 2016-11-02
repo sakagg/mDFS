@@ -15,7 +15,7 @@ CLIENT_CODE_DIR="Client"
 PROTO_CODE_DIR="Proto"
 DEPENDENCIES="ExternalLibs/protobuf-java-3.0.0.jar"
 COMPILED_DIR="Compiled"
-NUM_DNS=4
+NUM_DNS=3
 
 kill $(ps aux | grep 'NameNode' | awk '{print $2}')
 kill $(ps aux | grep 'DataNode' | awk '{print $2}')
@@ -24,7 +24,6 @@ kill $(ps aux | grep 'DataNode' | awk '{print $2}')
 if [[ $# -ge 1 && "$1" == "-c" ]]; then
 
     echo "Compiling..."
-
     javac -classpath $DEPENDENCIES:$CODE_DIR $CODE_DIR/$PROTO_CODE_DIR/*.java -d $COMPILED_DIR
     javac -classpath $DEPENDENCIES:$CODE_DIR $CODE_DIR/$NN_CODE_DIR/*.java -d $COMPILED_DIR
     javac -classpath $DEPENDENCIES:$CODE_DIR $CODE_DIR/$DN_CODE_DIR/*.java -d $COMPILED_DIR
@@ -33,11 +32,13 @@ if [[ $# -ge 1 && "$1" == "-c" ]]; then
 
 fi
 
+mkdir -p Data/NameNode
 java -classpath $DEPENDENCIES:$COMPILED_DIR $NN_CODE_DIR/NameNode --numdn $NUM_DNS & # Name Node
-
+sleep 2
 i=0
 while [ $i -lt $NUM_DNS ]
 do
+	mkdir -p Data/DataNode/$i
 	java -classpath $DEPENDENCIES:$COMPILED_DIR $DN_CODE_DIR/DataNode --nodeid $i --numdn $NUM_DNS & # Data Nodes
 	let i=i+1
 done
