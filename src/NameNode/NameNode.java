@@ -10,8 +10,10 @@ import Proto.ProtoMessage;
 
 import DataNode.IDataNode;
 import com.google.protobuf.InvalidProtocolBufferException;
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -20,12 +22,12 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.rmi.Naming;
 import java.rmi.RemoteException;
-import java.rmi.registry.LocateRegistry;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Properties;
 import java.util.Random;
 import java.util.Set;
 import java.util.logging.Level;
@@ -47,6 +49,7 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
     private static Integer DN_COUNT = -1;
     private static Integer globalBlockCounter = 0;
     private static Integer globalFileCounter = 0;
+    private static String rmiHost = "";
 
     private static final HashMap<Integer, IDataNode> dns = new HashMap<>();
     private static final ArrayList<DataNodeLocation> dnLocations = new ArrayList<>();
@@ -99,7 +102,7 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
     }
     
     private void restoreStateFromDisk() throws IOException {
-        log("persisting state from disk");
+        log("Restoring state from disk");
         File dir = new File(DIRECTORY);
         File[] files = dir.listFiles();
         for (File file : files) {
@@ -107,6 +110,7 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                 String handleTxt = file.getName();
                 log(handleTxt);
                 Integer handle = Integer.parseInt(handleTxt.substring(0, handleTxt.length() - 4));
+                globalFileCounter = Math.max(globalFileCounter, handle);
 
                 List<String> lines = Files.readAllLines(Paths.get(file.getCanonicalPath()), StandardCharsets.UTF_8);
                 
@@ -115,13 +119,18 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                     fileNameToHandle.put(lines.get(0), handle);
                     log("fileName : " + lines.get(0));
                     ArrayList<Integer> blocks = new ArrayList<>();
-                    for(Integer i=1; i<numberOfLines; i++)
-                        blocks.add(Integer.parseInt(lines.get(i)));
+                    for(Integer i=1; i<numberOfLines; i++) {
+                        Integer blockNum = Integer.parseInt(lines.get(i));
+                        blocks.add(blockNum);
+                        globalBlockCounter = Math.max(globalBlockCounter, blockNum);
+                    }
                     log("blocks : " + blocks.toString());
                     handleToBlocks.put(handle, blocks);
                 }
             }
         }
+        globalFileCounter++;
+        globalBlockCounter++;
     }
     
     private void addDnLocationToBlock(Integer blockNumber, DataNodeLocation dnl) {
@@ -136,18 +145,24 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
     }
     
     public static void main(String args[]) {
+        Properties props = new Properties();
+        try {
+            props.load(new BufferedReader(new FileReader("config.properties")));
+        } catch (IOException ex) {
+            Logger.getLogger(NameNode.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        
+        rmiHost = props.getProperty("rmiserver.host", "localhost")
+                + ":" + props.getProperty("rmiserver.port", "1099");
+
         try {
             NameNode nn = new NameNode();
             nn.restoreStateFromDisk();
             log(fileNameToHandle.toString());
             log(handleToBlocks.toString());
             DN_COUNT = Integer.parseInt(args[1]);
-            try {
-                LocateRegistry.createRegistry(1099);
-                log("Started Registry");
-            } catch (Exception e) { log(e.toString()); }
-
-            Naming.rebind("rmi://localhost/"+NN_NAME, nn);
+            
+            Naming.rebind("rmi://" + rmiHost + "/"+NN_NAME, nn);
             log("Bound to RMI");
             nn.finddns(DN_COUNT);
         } catch (Exception e) { log(e.toString()); }
@@ -308,7 +323,7 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
             for(Integer i: leftPeers) {
                 IDataNode dn;
                 try {
-                    dn = (IDataNode) Naming.lookup("rmi://localhost/" + DN_PREFIX + i.toString());
+                    dn = (IDataNode) Naming.lookup("rmi://" + rmiHost + "/" + DN_PREFIX + i.toString());
                 } catch (Exception e) {
                     continue;
                 }

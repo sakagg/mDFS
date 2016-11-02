@@ -6,9 +6,13 @@
 package DataNode;
 
 import NameNode.INameNode;
+import NameNode.NameNode;
+import static NameNode.NameNode.log;
 import Proto.Hdfs;
 import Proto.ProtoMessage;
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -21,6 +25,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Properties;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  *
@@ -35,6 +42,7 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
     private static Integer myId = -1;
     private static Integer DN_COUNT = -1;
     private static String Directory;
+    private static String rmiHost = "";
     
     private INameNode nn = null;
     private static final HashMap<Integer, IDataNode> dns = new HashMap<>();
@@ -84,9 +92,19 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
         
         Directory = DIRECTORY_PREFIX + myId + "/";
         
+        Properties props = new Properties();
+        try {
+            props.load(new BufferedReader(new FileReader("config.properties")));
+        } catch (IOException ex) {
+            Logger.getLogger(NameNode.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        
+        rmiHost = props.getProperty("rmiserver.host", "localhost")
+                + ":" + props.getProperty("rmiserver.port", "1099");
+
         try {
             DataNode dn = new DataNode();
-            Naming.rebind("rmi://localhost/" + DN_PREFIX + myId.toString(), dn);
+            Naming.rebind("rmi://" + rmiHost + "/" + DN_PREFIX + myId.toString(), dn);
             log("Bound to RMI");
             dn.finddns(DN_COUNT);
             dn.findnn();
@@ -167,7 +185,7 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
             for(Integer i: leftPeers) {
                 IDataNode dn;
                 try {
-                    dn = (IDataNode) Naming.lookup("rmi://localhost/" + DN_PREFIX + i.toString());
+                    dn = (IDataNode) Naming.lookup("rmi://" + rmiHost + "/" + DN_PREFIX + i.toString());
                 } catch (Exception e) {
                     continue;
                 }
@@ -189,7 +207,7 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
         while(nn == null)
         {
             try {
-                nn = (INameNode) Naming.lookup("rmi://localhost/" + NN_NAME);
+                nn = (INameNode) Naming.lookup("rmi://" + rmiHost + "/" + NN_NAME);
                 log("Found Name Node");
             } catch (Exception e) {}
             if (nn == null)
