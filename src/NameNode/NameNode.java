@@ -110,6 +110,7 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                 String handleTxt = file.getName();
                 log(handleTxt);
                 Integer handle = Integer.parseInt(handleTxt.substring(0, handleTxt.length() - 4));
+                globalFileCounter = Math.max(globalFileCounter, handle);
 
                 List<String> lines = Files.readAllLines(Paths.get(file.getCanonicalPath()), StandardCharsets.UTF_8);
                 
@@ -118,13 +119,18 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                     fileNameToHandle.put(lines.get(0), handle);
                     log("fileName : " + lines.get(0));
                     ArrayList<Integer> blocks = new ArrayList<>();
-                    for(Integer i=1; i<numberOfLines; i++)
-                        blocks.add(Integer.parseInt(lines.get(i)));
+                    for(Integer i=1; i<numberOfLines; i++) {
+                        Integer blockNum = Integer.parseInt(lines.get(i));
+                        blocks.add(blockNum);
+                        globalBlockCounter = Math.max(globalBlockCounter, blockNum);
+                    }
                     log("blocks : " + blocks.toString());
                     handleToBlocks.put(handle, blocks);
                 }
             }
         }
+        globalFileCounter++;
+        globalBlockCounter++;
     }
     
     private void addDnLocationToBlock(Integer blockNumber, DataNodeLocation dnl) {
