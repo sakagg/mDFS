@@ -29,6 +29,7 @@ import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.Random;
 import java.util.Set;
@@ -244,7 +245,12 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                     Random rand = new Random();
                     Integer dataNodeId = rand.nextInt(DN_COUNT);
                     DataNodeLocation dnl = dnLocations.get(dataNodeId);
-                    if (ports.contains(dnl.port)) {
+                    Boolean included = false;
+                    for (int j=0; j<ips.size() && !included; j++) {
+                        if (Objects.equals(ports.get(j), dnl.port) && ips.get(j).equals(dnl.ip))
+                            included = true;
+                    }
+                    if (included) {
                         i--;
                     } else {
                         ips.add(dnl.ip);
@@ -279,7 +285,7 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
             try {
                 Hdfs.BlockReportRequest blockReportRequest = Hdfs.BlockReportRequest.parseFrom(inp);
                 DataNodeLocation dnl = new DataNodeLocation(blockReportRequest.getLocation().getIp(), blockReportRequest.getLocation().getPort());
-                ArrayList<Integer> blockNumbers = new ArrayList<Integer>(blockReportRequest.getBlockNumbersList());
+                ArrayList<Integer> blockNumbers = new ArrayList<>(blockReportRequest.getBlockNumbersList());
                 log("[BlockReport] received from : " + blockReportRequest.getLocation().getPort());
                 for(Integer blockNumber : blockNumbers) {
                     log("[BlockReport] BlockNumber : " + blockNumber);
@@ -293,7 +299,7 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                         ArrayList<DataNodeLocation> dnls = blockToDnLocations.get(blockNumber);
                         Boolean contains = false;
                         for(DataNodeLocation x : dnls) {
-                            if(dnl.port == x.port) {
+                            if(Objects.equals(x.port, dnl.port) && x.ip.equals(dnl.ip)) {
                                 contains = true;
                                 break;
                             }
