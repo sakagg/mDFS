@@ -240,19 +240,16 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                 addBlockToHandle(handle, globalBlockCounter);
                 ArrayList<String> ips = new ArrayList<>();
                 ArrayList<Integer> ports = new ArrayList<>();
+                ArrayList<Integer> dnIds = new ArrayList<>();
                 for(int i=0; i<REP_FACTOR; i++)
                 {
                     Random rand = new Random();
                     Integer dataNodeId = rand.nextInt(DN_COUNT);
-                    DataNodeLocation dnl = dnLocations.get(dataNodeId);
-                    Boolean included = false;
-                    for (int j=0; j<ips.size() && !included; j++) {
-                        if (Objects.equals(ports.get(j), dnl.port) && ips.get(j).equals(dnl.ip))
-                            included = true;
-                    }
-                    if (included) {
+                    if (dnIds.contains(dataNodeId)) {
                         i--;
                     } else {
+                        dnIds.add(dataNodeId);
+                        DataNodeLocation dnl = dnLocations.get(dataNodeId);
                         ips.add(dnl.ip);
                         ports.add(dnl.port);
                         addDnLocationToBlock(globalBlockCounter, dnl);
@@ -260,7 +257,7 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                 }
                 log("Handle " + handle.toString()
                         + " assigned Block " + globalBlockCounter.toString()
-                        + " assigned DNs: " + ports.toString());
+                        + " assigned DNs: " + dnIds.toString());
 
                 ret = ProtoMessage.assignBlockResponse(1, globalBlockCounter, ips, ports);
                 globalBlockCounter++;
@@ -286,7 +283,9 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                 Hdfs.BlockReportRequest blockReportRequest = Hdfs.BlockReportRequest.parseFrom(inp);
                 DataNodeLocation dnl = new DataNodeLocation(blockReportRequest.getLocation().getIp(), blockReportRequest.getLocation().getPort());
                 ArrayList<Integer> blockNumbers = new ArrayList<>(blockReportRequest.getBlockNumbersList());
-                log("[BlockReport] received from : " + blockReportRequest.getLocation().getPort());
+                log("[BlockReport] received from : "
+                        + blockReportRequest.getLocation().getIp()
+                        + ":" + blockReportRequest.getLocation().getPort());
                 for(Integer blockNumber : blockNumbers) {
                     log("[BlockReport] BlockNumber : " + blockNumber);
                     if(blockToDnLocations.containsKey(blockNumber) == false) {
