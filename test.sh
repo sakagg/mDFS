@@ -32,23 +32,14 @@ if [[ $# -ge 1 && "$1" == "-c" ]]; then
 
 fi
 
-# Start the RMI registry in the Compiled Directory
-echo "Starting RMI Registry"
-curdir=`pwd`
-cd $COMPILED_DIR
-rmiregistry 1099 &
-cd $curdir
-
-sleep 10
-
 mkdir -p Data/NameNode
 java -classpath $DEPENDENCIES:$COMPILED_DIR $NN_CODE_DIR/NameNode --numdn $NUM_DNS & # Name Node
 i=0
-while [ $i -lt $NUM_DNS ]
-do
-	mkdir -p Data/DataNode/$i
+# while [ $i -lt $NUM_DNS ]
+# do
+ 	mkdir -p Data/DataNode/$i
 	java -classpath $DEPENDENCIES:$COMPILED_DIR $DN_CODE_DIR/DataNode --nodeid $i --numdn $NUM_DNS & # Data Nodes
-	let i=i+1
-done
+# 	let i=i+1
+# done
 
-java -classpath $DEPENDENCIES:$COMPILED_DIR $CLIENT_CODE_DIR/Client --numdn $NUM_DNS # Client 
+# java -classpath $DEPENDENCIES:$COMPILED_DIR $CLIENT_CODE_DIR/Client --numdn $NUM_DNS # Client 

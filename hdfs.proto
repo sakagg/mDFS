@@ -90,3 +90,9 @@ message HeartBeatRequest {
 message HeartBeatResponse {
   optional int32 status = 1;
 }
+
+message ReportIPRequest {
+    optional int32 id = 1;
+    optional string ip = 2;
+    optional int32 port = 3;
+}
