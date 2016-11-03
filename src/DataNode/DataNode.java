@@ -178,7 +178,9 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
     
     public void reportBlocks() {
         List<Integer> blockNumbers = getAllBlocks();
-        byte[] req = ProtoMessage.blockReportRequest(myId, "", myId, blockNumbers);
+        String ip = props.getProperty("rmi.datanode.ip");
+        Integer port = Integer.parseInt(props.getProperty("rmi.datanode.port"));
+        byte[] req = ProtoMessage.blockReportRequest(myId, ip, port, blockNumbers);
         
         try {
             byte[] res = nn.blockReport(req);
