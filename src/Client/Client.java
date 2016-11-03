@@ -175,7 +175,7 @@ public class Client {
                 dn.writeBlock(writeBlockRequest);
             } catch (Exception e) {}
         }
-        closeFile(handle);
+        closeFile(handle); // Check status message and handle accordingly
     }
     
     public void readFile(String fileName) {
