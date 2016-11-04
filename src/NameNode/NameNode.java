@@ -27,12 +27,13 @@ import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Semaphore;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -50,19 +51,33 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
     private static final Integer REP_FACTOR = 2; //Replication Factor in DNs
 
     private static Integer DN_COUNT = -1;
+    private static final Semaphore blockLock = new Semaphore(1, true);
     private static Integer globalBlockCounter = 0;
+    private static final Semaphore fileLock = new Semaphore(1, true);
     private static Integer globalFileCounter = 0;
     private static Properties props = new Properties();
     
-    private static final HashMap<Integer, IDataNode> dns = new HashMap<>();
-    private static final HashMap<Integer, DataNodeLocation> dnLocations = new HashMap<>();
-    private static final HashMap<Integer, String> handleToOpenFileName = new HashMap<>();
-    private static final HashMap<String, Integer> fileNameToHandle = new HashMap<>();
-    private static final HashMap<Integer, ArrayList<Integer> > handleToBlocks = new HashMap<>();
-    private static final HashMap<Integer, ArrayList<DataNodeLocation> > blockToDnLocations = new HashMap<>();
+    private static final ConcurrentHashMap<Integer, IDataNode> dns = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Integer, DataNodeLocation> dnLocations = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Integer, String> handleToOpenFileName = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Integer> fileNameToHandle = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Integer, ArrayList<Integer> > handleToBlocks = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Integer, ArrayList<DataNodeLocation> > blockToDnLocations = new ConcurrentHashMap<>();
     
     NameNode() throws RemoteException {
         super();
+    }
+    
+    private static void acquireLock(Semaphore s) {
+        try {
+            s.acquire();
+        } catch (InterruptedException ex) {
+            Logger.getLogger(NameNode.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
+    
+    private static void releaseLock(Semaphore s) {
+        s.release();
     }
     
     public static void log(String s) {
@@ -73,8 +88,10 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
     }
     
     private Integer createFile(String fileName) throws IOException {
+        acquireLock(fileLock);
         Integer handle = globalFileCounter;
         globalFileCounter++;
+        releaseLock(fileLock);
         handleToOpenFileName.put(handle, fileName);
         
         String blockFile = DIRECTORY + handle.toString() + ".txt";
@@ -180,11 +197,11 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
             try {
                 openFileRequest = Hdfs.OpenFileRequest.parseFrom(inp);
                 if(openFileRequest.getForRead() == false) {
+                    Integer handle = createFile(openFileRequest.getFileName());
                     log("Opening file '"
                             + openFileRequest.getFileName()
                             + "' for Writing with handle "
-                            + globalFileCounter.toString());
-                    Integer handle = createFile(openFileRequest.getFileName());
+                            + handle.toString());
                     // ^ TODO Check for errors while creating file and send response accordingly
                     byte[] openFileResponse = ProtoMessage.openFileResponse(1, handle);
                     return openFileResponse;
@@ -248,7 +265,11 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
             try {
                 assignBlockRequest = Hdfs.AssignBlockRequest.parseFrom(inp);
                 Integer handle = assignBlockRequest.getHandle();
-                addBlockToHandle(handle, globalBlockCounter);
+                acquireLock(blockLock);
+                Integer assignedBlockNumber = globalBlockCounter;
+                globalBlockCounter++;
+                releaseLock(blockLock);
+                addBlockToHandle(handle, assignedBlockNumber);
                 ArrayList<String> ips = new ArrayList<>();
                 ArrayList<Integer> ports = new ArrayList<>();
                 ArrayList<Integer> dnIds = new ArrayList<>();
@@ -263,15 +284,14 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                         DataNodeLocation dnl = dnLocations.get(dataNodeId);
                         ips.add(dnl.ip);
                         ports.add(dnl.port);
-                        addDnLocationToBlock(globalBlockCounter, dnl);
+                        addDnLocationToBlock(assignedBlockNumber, dnl);
                     }
                 }
                 log("Handle " + handle.toString()
-                        + " assigned Block " + globalBlockCounter.toString()
+                        + " assigned Block " + assignedBlockNumber.toString()
                         + " assigned DNs: " + dnIds.toString());
 
-                ret = ProtoMessage.assignBlockResponse(1, globalBlockCounter, ips, ports);
-                globalBlockCounter++;
+                ret = ProtoMessage.assignBlockResponse(1, assignedBlockNumber, ips, ports);
             } catch (InvalidProtocolBufferException ex) {
                 Logger.getLogger(NameNode.class.getName()).log(Level.SEVERE, null, ex);
             } catch (IOException ex) {
