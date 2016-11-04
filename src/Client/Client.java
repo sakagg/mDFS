@@ -148,17 +148,18 @@ public class Client {
         return dn;
     }
     
-    public void putFile(String fileName) {
+    public void putFile(String inputFileName, String outputFileName) {
+        
         try {
-            FileInputStream is = new FileInputStream(fileName);
+            FileInputStream is = new FileInputStream(inputFileName);
             byte chunk_data[] = new byte[CHUNK_SIZE];
-            Integer handle = openFileForWrite(fileName);
+            Integer handle = openFileForWrite(outputFileName);
             byte[] assignBlockRequest = ProtoMessage.assignBlockRequest(handle);
             int read, chunk_number = 0;
             
             while ((read = is.read(chunk_data)) != -1) {
                 chunk_number++;
-                log(chunk_number + "");
+                log("Chunk number: " + chunk_number);
                 Hdfs.BlockLocations blockLocations = null;
                 try {
                     byte[] response = nn.assignBlock(assignBlockRequest);
@@ -178,9 +179,8 @@ public class Client {
                 } catch (RemoteException ex) {
                     Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
                 }
-
             }
-            System.out.println("write done for file " + fileName);
+            System.out.println("Exported " + inputFileName + " from local system to " + outputFileName + " in mHdfs");
             closeFile(handle); // Check status message and handle accordingly
         } catch (FileNotFoundException ex) {
             Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
@@ -189,12 +189,11 @@ public class Client {
         }
     }
     
-    public void getFile(String fileName) {
-        List<Hdfs.BlockLocations> blockLocations = openFileForRead(fileName);
-        try {    
-        //                os.write(chunk_data, 0, read);
+    public void getFile(String inputFileName, String outputFileName) {
+        List<Hdfs.BlockLocations> blockLocations = openFileForRead(inputFileName);
+        try {
             if(blockLocations != null) {
-                OutputStream os = new FileOutputStream(fileName);
+                OutputStream os = new FileOutputStream(outputFileName);
                 for (Hdfs.BlockLocations block: blockLocations) {
                     Random rand = new Random();
                     Integer dataNodeInd = rand.nextInt(block.getLocationsCount());
@@ -213,9 +212,9 @@ public class Client {
                     }
                 }
                 os.close();
-                System.out.println("File " + fileName + " stored on local system ");
+                System.out.println("File " + inputFileName + " pulled from mHdfs and stored on local system as " + outputFileName);
             } else {
-                System.out.println("File : " + fileName + " does not exist.");
+                System.out.println("File : " + inputFileName + " does not exist.");
             }
         } catch (FileNotFoundException ex) {
             Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
@@ -231,10 +230,10 @@ public class Client {
             String[] ip = line.split(" ");
             switch (ip[0]) {
                 case "put":
-                    putFile(ip[1]);
+                    putFile(ip[1], ip[2]);
                     break;
                 case "get":
-                    getFile(ip[1]);
+                    getFile(ip[1], ip[2]);
                     break;
                 case "list":
                     listFiles();
