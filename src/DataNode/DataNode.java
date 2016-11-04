@@ -59,9 +59,7 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
     public void putBlock(Integer blockNumber, byte[] data) throws IOException {
         String fileName = Directory + blockNumber.toString();
         Path path = Paths.get(fileName);
-        log("Writing to file " + fileName);
         Files.write(path, data);
-        log("Writing " + blockNumber.toString());
     }
     
     private byte[] getBlock(Integer blockNumber) throws IOException {
@@ -122,7 +120,7 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
                 block = readBlockRequest.getBlockNumber();
                 data = getBlock(block);
             } catch (Exception e) { log(e.toString()); }
-            log("Block " + block.toString() + " has contents: " + new String(data, StandardCharsets.UTF_8));
+            log("Reading block " + block.toString());
             return ProtoMessage.readBlockResponse(data);
         }
 	
@@ -137,8 +135,7 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
             try {
                 putBlock(blockNumber, data);
             } catch (IOException e) {log(e.toString());} // TODO return status 0
-            log(new String(data, StandardCharsets.UTF_8));
-            
+            log("Received block number: " + blockNumber);
             Hdfs.BlockLocations blockLocations = null;
             blockLocations = writeBlockRequest.getBlockInfo();
             
@@ -187,12 +184,7 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
             log("[BlockReport] Sending : " + blockNumbers);
             Hdfs.BlockReportResponse blockReportResponse = Hdfs.BlockReportResponse.parseFrom(res);
             ArrayList<Integer> responseStatuses = new ArrayList<Integer> (blockReportResponse.getStatusList());
-            Integer i = 0;
-            for(Integer blockNumber : blockNumbers) {
-                Integer responseStatus = responseStatuses.get(i);
-                i++;
-                log("[BlockReport] response status of " + blockNumber + " : " + responseStatus);
-            }
+            log("[BlockReport] Received : " + responseStatuses);
         } catch (Exception e) { log(e.toString()); }
     }    
         

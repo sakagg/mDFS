@@ -13,8 +13,13 @@ import Proto.ProtoMessage;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 import java.io.BufferedReader;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.MalformedURLException;
 import java.rmi.Naming;
 import java.rmi.NotBoundException;
@@ -34,7 +39,7 @@ import java.util.logging.Logger;
 public class Client {
     private static final String NN_NAME = "NameNode";
     private static final String DN_PREFIX = "DataNode";
-    private static final Integer CHUNK_SIZE = 10;
+    private static final Integer CHUNK_SIZE = 128*1024*1024;
     private static final Properties props = new Properties();
     
     private INameNode nn = null;
@@ -143,53 +148,79 @@ public class Client {
         return dn;
     }
     
-    public void writeFile(String fileName, byte[] data) {
-        Integer handle = openFileForWrite(fileName);
-        byte[] assignBlockRequest = ProtoMessage.assignBlockRequest(handle);
-        int dlength = data.length;
-        for(int i=0; i<dlength; i+=CHUNK_SIZE) {
-            byte[] chunk_data = Arrays.copyOfRange(data, i, Math.min(i+CHUNK_SIZE, dlength));
-            Hdfs.BlockLocations blockLocations = null;
-            try {
-                byte[] response = nn.assignBlock(assignBlockRequest);
-                blockLocations = Hdfs.AssignBlockResponse.parseFrom(response).getNewBlock();
-            } catch (RemoteException | InvalidProtocolBufferException ex) {
-                Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
-            }
+    public void putFile(String fileName) {
+        try {
+            FileInputStream is = new FileInputStream(fileName);
+            byte chunk_data[] = new byte[CHUNK_SIZE];
+            Integer handle = openFileForWrite(fileName);
+            byte[] assignBlockRequest = ProtoMessage.assignBlockRequest(handle);
+            int read, chunk_number = 0;
             
-            IDataNode dn = getDataNode(blockLocations.getLocations(0).getIp(), blockLocations.getLocations(0).getPort());
-            byte[] writeBlockRequest = ProtoMessage.writeBlockRequest(chunk_data, blockLocations);
-            try {
-                dn.writeBlock(writeBlockRequest);
-            } catch (RemoteException ex) {
-                Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
-            }
-        }
-        closeFile(handle); // Check status message and handle accordingly
-    }
-    
-    public void readFile(String fileName) {
-        ByteString data = ByteString.EMPTY;
-        List<Hdfs.BlockLocations> blockLocations = openFileForRead(fileName);
-        if(blockLocations != null) {
-            for (Hdfs.BlockLocations block: blockLocations) {
-                Random rand = new Random();
-                Integer dataNodeInd = rand.nextInt(block.getLocationsCount());
-                Hdfs.DataNodeLocation dnl = block.getLocations(dataNodeInd);
-                log("Pulling data from DN " + dnl.getIp() + ":" + dnl.getPort());
+            while ((read = is.read(chunk_data)) != -1) {
+                chunk_number++;
+                log(chunk_number + "");
+                Hdfs.BlockLocations blockLocations = null;
                 try {
-                    byte[] request = ProtoMessage.readBlockRequest(block.getBlockNumber());
-                    byte[] response = getDataNode(dnl.getIp(), dnl.getPort()).readBlock(request);
-                    Hdfs.ReadBlockResponse readBlockResponse = Hdfs.ReadBlockResponse.parseFrom(response);
-                    data = data.concat(readBlockResponse.getData(0));
+                    byte[] response = nn.assignBlock(assignBlockRequest);
+                    blockLocations = Hdfs.AssignBlockResponse.parseFrom(response).getNewBlock();
                 } catch (RemoteException | InvalidProtocolBufferException ex) {
                     Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
                 }
+
+                IDataNode dn = getDataNode(blockLocations.getLocations(0).getIp(), blockLocations.getLocations(0).getPort());
+                if(read != CHUNK_SIZE)   
+                    chunk_data = Arrays.copyOfRange(chunk_data, 0, read);
+
+                byte[] writeBlockRequest = ProtoMessage.writeBlockRequest(chunk_data, blockLocations);
+
+                try {
+                    dn.writeBlock(writeBlockRequest);
+                } catch (RemoteException ex) {
+                    Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
+                }
+
             }
-            System.out.println("File " + fileName + " has contents: " + data.toStringUtf8());
+            System.out.println("write done for file " + fileName);
+            closeFile(handle); // Check status message and handle accordingly
+        } catch (FileNotFoundException ex) {
+            Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (IOException ex) {
+            Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
         }
-        else {
-            System.out.println("File : " + fileName + " does not exist.");
+    }
+    
+    public void getFile(String fileName) {
+        List<Hdfs.BlockLocations> blockLocations = openFileForRead(fileName);
+        try {    
+        //                os.write(chunk_data, 0, read);
+            if(blockLocations != null) {
+                OutputStream os = new FileOutputStream(fileName);
+                for (Hdfs.BlockLocations block: blockLocations) {
+                    Random rand = new Random();
+                    Integer dataNodeInd = rand.nextInt(block.getLocationsCount());
+                    Hdfs.DataNodeLocation dnl = block.getLocations(dataNodeInd);
+                    log("Pulling block " + block.getBlockNumber() + " from DN " + dnl.getIp() + ":" + dnl.getPort());
+                    try {
+                        byte[] request = ProtoMessage.readBlockRequest(block.getBlockNumber());
+                        byte[] response = getDataNode(dnl.getIp(), dnl.getPort()).readBlock(request);
+                        Hdfs.ReadBlockResponse readBlockResponse = Hdfs.ReadBlockResponse.parseFrom(response);
+                        byte[] chunk_data = readBlockResponse.getData(0).toByteArray(); 
+                        os.write(chunk_data);
+                    } catch (RemoteException | InvalidProtocolBufferException ex) {
+                        Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
+                    } catch (IOException ex) {
+                        Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
+                    }
+                }
+                os.close();
+                System.out.println("File " + fileName + " stored on local system ");
+            } else {
+                System.out.println("File : " + fileName + " does not exist.");
+            }
+        } catch (FileNotFoundException ex) {
+            Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (IOException ex) {
+            Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
     
@@ -199,15 +230,16 @@ public class Client {
             String line = in.nextLine();
             String[] ip = line.split(" ");
             switch (ip[0]) {
-                case "write":
-                    writeFile(ip[1], ip[2].getBytes());
+                case "put":
+                    putFile(ip[1]);
                     break;
-                case "read":
-                    readFile(ip[1]);
+                case "get":
+                    getFile(ip[1]);
                     break;
                 case "list":
                     listFiles();
                     break;
+                
                 default:
                     break;
             }
