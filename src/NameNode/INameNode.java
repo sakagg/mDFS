@@ -44,4 +44,8 @@ public interface INameNode extends Remote {
 	/* HeartBeatResponse heartBeat(HeartBeatRequest) */
 //	/* Heartbeat messages between NameNode and DataNode */
 	byte[] heartBeat(byte[] inp ) throws RemoteException;
+        
+        /* void reportIP(ReportIPRequest) */
+        /* DataNode reports its ID on start */
+        void reportIP(byte[] inp ) throws RemoteException;
 }

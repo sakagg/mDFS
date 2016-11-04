@@ -8,18 +8,18 @@ package Client;
 import NameNode.INameNode;
 import DataNode.IDataNode;
 import NameNode.NameNode;
-import static NameNode.NameNode.log;
 import Proto.Hdfs;
 import Proto.ProtoMessage;
 import com.google.protobuf.ByteString;
+import com.google.protobuf.InvalidProtocolBufferException;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.net.MalformedURLException;
 import java.rmi.Naming;
-import java.util.ArrayList;
+import java.rmi.NotBoundException;
+import java.rmi.RemoteException;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
 import java.util.Random;
@@ -35,11 +35,9 @@ public class Client {
     private static final String NN_NAME = "NameNode";
     private static final String DN_PREFIX = "DataNode";
     private static final Integer CHUNK_SIZE = 10;
-    private static Integer DN_COUNT = -1;
-    private static String rmiHost = "";
+    private static final Properties props = new Properties();
     
     private INameNode nn = null;
-    private HashMap<Integer, IDataNode> dns = new HashMap<>();
     
     public static void log(String s) {
         String op = String.valueOf(System.currentTimeMillis()) + " ";
@@ -49,20 +47,14 @@ public class Client {
     }
     
     public static void main(String args[]) {
-        Properties props = new Properties();
         try {
             props.load(new BufferedReader(new FileReader("config.properties")));
         } catch (IOException ex) {
             Logger.getLogger(NameNode.class.getName()).log(Level.SEVERE, null, ex);
         }
         
-        rmiHost = props.getProperty("rmiserver.host", "localhost")
-                + ":" + props.getProperty("rmiserver.port", "1099");
-
-        DN_COUNT = Integer.parseInt(args[1]);
         Client client = new Client();
         client.findnn();
-        client.finddns(DN_COUNT);
         client.mainloop();
     }
     
@@ -70,40 +62,16 @@ public class Client {
         while(nn == null)
         {
             try {
-                nn = (INameNode) Naming.lookup("rmi://" + rmiHost + "/" + NN_NAME);
+                nn = (INameNode) Naming.lookup("rmi://" + props.getProperty("rmi.namenode.ip")
+                        + ":" + props.getProperty("rmi.namenode.port") + "/" + NN_NAME);
                 log("Found Name Node");
-            } catch (Exception e) {}
+            } catch (NotBoundException | MalformedURLException | RemoteException ex) {
+                Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
+            }
             if (nn == null)
                 try {
                     Thread.sleep(1000);
                 } catch (Exception e) {}
-        }
-    }
-    
-    public void finddns(Integer numberDNs) {
-        HashSet<Integer> leftPeers = new HashSet<>();
-        for(int i=0; i<numberDNs; i++)
-            leftPeers.add(i);
-        for(;;) {
-            ArrayList<Integer> toDelete = new ArrayList<>();
-            for(Integer i: leftPeers) {
-                IDataNode dn;
-                try {
-                    dn = (IDataNode) Naming.lookup("rmi://" + rmiHost + "/" + DN_PREFIX + i.toString());
-                } catch (Exception e) {
-                    continue;
-                }
-                toDelete.add(i);
-                dns.put(i, dn);
-                log("Found Data Node " + i.toString());
-            }
-            toDelete.stream().forEach((i) -> {leftPeers.remove(i);});
-            if(leftPeers.isEmpty()) {
-                break;
-            }
-            try {
-                Thread.sleep(1000);
-            } catch (Exception E) {}
         }
     }
     
@@ -113,14 +81,16 @@ public class Client {
             byte[] res = nn.list(inp);
             Hdfs.ListFilesResponse listFilesResponse = Hdfs.ListFilesResponse.parseFrom(res);
             if(listFilesResponse.getStatus() == 1) {
-                for(String fileName : listFilesResponse.getFileNamesList()) {
+                listFilesResponse.getFileNamesList().stream().forEach((fileName) -> {
                     System.out.println(fileName);
-                }
+                });
                 System.out.println("");
             } else {
                 System.err.println("Some Error Occured During Listing File");
             }
-        } catch (Exception e) { log(e.toString()); }
+        } catch (RemoteException | InvalidProtocolBufferException ex) {
+            Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
+        }
         
     }
     
@@ -130,7 +100,9 @@ public class Client {
         try {
             byte[] openResponse = nn.openFile(openRequest);
             handle = Hdfs.OpenFileResponse.parseFrom(openResponse).getHandle();
-        } catch (Exception e) {}
+        } catch (InvalidProtocolBufferException | RemoteException ex) {
+            Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
+        }
         return handle;
     }
     
@@ -146,7 +118,9 @@ public class Client {
                 Hdfs.BlockLocationResponse response = Hdfs.BlockLocationResponse.parseFrom(blockLocationResponse);
                 blockLocations = response.getBlockLocationsList();
             }
-        } catch (Exception e) { log(e.toString()); }
+        } catch (RemoteException | InvalidProtocolBufferException ex) {
+            Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
+        }
         return blockLocations;
     }
     
@@ -155,6 +129,18 @@ public class Client {
         try {
             nn.closeFile(closeRequest);
         } catch (Exception e) {}
+    }
+    
+    IDataNode getDataNode(String ip, Integer port) {
+        IDataNode  dn = null;
+        try {
+            dn = (IDataNode) Naming.lookup("rmi://" + ip
+                    + ":" + port
+                    + "/" + DN_PREFIX);
+        } catch (NotBoundException | MalformedURLException | RemoteException ex) {
+            Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        return dn;
     }
     
     public void writeFile(String fileName, byte[] data) {
@@ -167,13 +153,17 @@ public class Client {
             try {
                 byte[] response = nn.assignBlock(assignBlockRequest);
                 blockLocations = Hdfs.AssignBlockResponse.parseFrom(response).getNewBlock();
-            } catch (Exception e) {}
-            // NOTE: Assuming Data Node lacation's port represents its id.
-            IDataNode dn = dns.get(blockLocations.getLocations(0).getPort());
+            } catch (RemoteException | InvalidProtocolBufferException ex) {
+                Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
+            }
+            
+            IDataNode dn = getDataNode(blockLocations.getLocations(0).getIp(), blockLocations.getLocations(0).getPort());
             byte[] writeBlockRequest = ProtoMessage.writeBlockRequest(chunk_data, blockLocations);
             try {
                 dn.writeBlock(writeBlockRequest);
-            } catch (Exception e) {}
+            } catch (RemoteException ex) {
+                Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
+            }
         }
         closeFile(handle); // Check status message and handle accordingly
     }
@@ -186,14 +176,15 @@ public class Client {
                 Random rand = new Random();
                 Integer dataNodeInd = rand.nextInt(block.getLocationsCount());
                 Hdfs.DataNodeLocation dnl = block.getLocations(dataNodeInd);
-                Integer dataNodeId = dnl.getPort();
-                log("Pulling data from DN " + dataNodeId.toString());
+                log("Pulling data from DN " + dnl.getIp() + ":" + dnl.getPort());
                 try {
                     byte[] request = ProtoMessage.readBlockRequest(block.getBlockNumber());
-                    byte[] response = dns.get(dataNodeId).readBlock(request);
+                    byte[] response = getDataNode(dnl.getIp(), dnl.getPort()).readBlock(request);
                     Hdfs.ReadBlockResponse readBlockResponse = Hdfs.ReadBlockResponse.parseFrom(response);
                     data = data.concat(readBlockResponse.getData(0));
-                } catch (Exception e) { log(e.toString()); }
+                } catch (RemoteException | InvalidProtocolBufferException ex) {
+                    Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
+                }
             }
             System.out.println("File " + fileName + " has contents: " + data.toStringUtf8());
         }
@@ -207,12 +198,19 @@ public class Client {
         for(;;) {
             String line = in.nextLine();
             String[] ip = line.split(" ");
-            if(ip[0].contentEquals("write"))
-                writeFile(ip[1], ip[2].getBytes());
-            else if(ip[0].contentEquals("read"))
-                readFile(ip[1]);
-            else if(ip[0].contentEquals("list"))
-                listFiles();
+            switch (ip[0]) {
+                case "write":
+                    writeFile(ip[1], ip[2].getBytes());
+                    break;
+                case "read":
+                    readFile(ip[1]);
+                    break;
+                case "list":
+                    listFiles();
+                    break;
+                default:
+                    break;
+            }
         }
     }
 }

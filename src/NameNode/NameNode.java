@@ -17,16 +17,19 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.rmi.Naming;
+import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
+import java.rmi.registry.LocateRegistry;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.Random;
 import java.util.Set;
@@ -49,10 +52,10 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
     private static Integer DN_COUNT = -1;
     private static Integer globalBlockCounter = 0;
     private static Integer globalFileCounter = 0;
-    private static String rmiHost = "";
-
+    private static Properties props = new Properties();
+    
     private static final HashMap<Integer, IDataNode> dns = new HashMap<>();
-    private static final ArrayList<DataNodeLocation> dnLocations = new ArrayList<>();
+    private static final HashMap<Integer, DataNodeLocation> dnLocations = new HashMap<>();
     private static final HashMap<Integer, String> handleToOpenFileName = new HashMap<>();
     private static final HashMap<String, Integer> fileNameToHandle = new HashMap<>();
     private static final HashMap<Integer, ArrayList<Integer> > handleToBlocks = new HashMap<>();
@@ -146,16 +149,18 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
     }
     
     public static void main(String args[]) {
-        Properties props = new Properties();
         try {
             props.load(new BufferedReader(new FileReader("config.properties")));
         } catch (IOException ex) {
             Logger.getLogger(NameNode.class.getName()).log(Level.SEVERE, null, ex);
         }
         
-        rmiHost = props.getProperty("rmiserver.host", "localhost")
-                + ":" + props.getProperty("rmiserver.port", "1099");
-
+        log("NameNode port: " + props.getProperty("rmi.namenode.port"));
+        
+        try {
+            LocateRegistry.createRegistry(Integer.parseInt(props.getProperty("rmi.namenode.port")));
+        } catch (RemoteException ex) {}
+        
         try {
             NameNode nn = new NameNode();
             nn.restoreStateFromDisk();
@@ -163,7 +168,8 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
             log(handleToBlocks.toString());
             DN_COUNT = Integer.parseInt(args[1]);
             
-            Naming.rebind("rmi://" + rmiHost + "/"+NN_NAME, nn);
+            Naming.rebind("rmi://localhost:" + props.getProperty("rmi.namenode.port") + "/" + NN_NAME, nn);
+            
             log("Bound to RMI");
             nn.finddns(DN_COUNT);
         } catch (Exception e) { log(e.toString()); }
@@ -247,14 +253,16 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                 addBlockToHandle(handle, globalBlockCounter);
                 ArrayList<String> ips = new ArrayList<>();
                 ArrayList<Integer> ports = new ArrayList<>();
+                ArrayList<Integer> dnIds = new ArrayList<>();
                 for(int i=0; i<REP_FACTOR; i++)
                 {
                     Random rand = new Random();
                     Integer dataNodeId = rand.nextInt(DN_COUNT);
-                    DataNodeLocation dnl = dnLocations.get(dataNodeId);
-                    if (ports.contains(dnl.port)) {
+                    if (dnIds.contains(dataNodeId)) {
                         i--;
                     } else {
+                        dnIds.add(dataNodeId);
+                        DataNodeLocation dnl = dnLocations.get(dataNodeId);
                         ips.add(dnl.ip);
                         ports.add(dnl.port);
                         addDnLocationToBlock(globalBlockCounter, dnl);
@@ -262,7 +270,7 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                 }
                 log("Handle " + handle.toString()
                         + " assigned Block " + globalBlockCounter.toString()
-                        + " assigned DNs: " + ports.toString());
+                        + " assigned DNs: " + dnIds.toString());
 
                 ret = ProtoMessage.assignBlockResponse(1, globalBlockCounter, ips, ports);
                 globalBlockCounter++;
@@ -287,8 +295,10 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
             try {
                 Hdfs.BlockReportRequest blockReportRequest = Hdfs.BlockReportRequest.parseFrom(inp);
                 DataNodeLocation dnl = new DataNodeLocation(blockReportRequest.getLocation().getIp(), blockReportRequest.getLocation().getPort());
-                ArrayList<Integer> blockNumbers = new ArrayList<Integer>(blockReportRequest.getBlockNumbersList());
-                log("[BlockReport] received from : " + blockReportRequest.getLocation().getPort());
+                ArrayList<Integer> blockNumbers = new ArrayList<>(blockReportRequest.getBlockNumbersList());
+                log("[BlockReport] received from : "
+                        + blockReportRequest.getLocation().getIp()
+                        + ":" + blockReportRequest.getLocation().getPort());
                 for(Integer blockNumber : blockNumbers) {
                     log("[BlockReport] BlockNumber : " + blockNumber);
                     if(blockToDnLocations.containsKey(blockNumber) == false) {
@@ -301,7 +311,7 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                         ArrayList<DataNodeLocation> dnls = blockToDnLocations.get(blockNumber);
                         Boolean contains = false;
                         for(DataNodeLocation x : dnls) {
-                            if(dnl.port == x.port) {
+                            if(Objects.equals(x.port, dnl.port) && x.ip.equals(dnl.ip)) {
                                 contains = true;
                                 break;
                             }
@@ -326,34 +336,38 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
         public byte[] heartBeat(byte[] inp) throws RemoteException {
             return null;
         }
+        
+    @Override
+        public void reportIP(byte[] inp) throws RemoteException {
+            Hdfs.ReportIPRequest request = null;
+            IDataNode dn = null;
+            try {
+                request = Hdfs.ReportIPRequest.parseFrom(inp);
+            } catch (InvalidProtocolBufferException ex) {
+                Logger.getLogger(NameNode.class.getName()).log(Level.SEVERE, null, ex);
+            }
+            log("Received IP report from " + request.getId() + " IP: " + request.getIp() + " Port: " + request.getPort());
+            dnLocations.put(request.getId(), new DataNodeLocation(request.getIp(), request.getPort()));
+            try {
+                dn = (IDataNode) Naming.lookup("rmi://" + request.getIp()
+                        + ":" + request.getPort()
+                        + "/" + DN_PREFIX);
+            } catch (NotBoundException ex) {
+                Logger.getLogger(NameNode.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (MalformedURLException ex) {
+                Logger.getLogger(NameNode.class.getName()).log(Level.SEVERE, null, ex);
+            }
+            dns.put(request.getId(), dn);
+            log(String.valueOf(dns.size()));
+        }
 
     public void finddns(Integer numberDNs) {
-        HashSet<Integer> leftPeers = new HashSet<>();
-        for(int i=0; i<numberDNs; i++)
-            leftPeers.add(i);
-        for(;;) {
-            ArrayList<Integer> toDelete = new ArrayList<>();
-            for(Integer i: leftPeers) {
-                IDataNode dn;
-                try {
-                    dn = (IDataNode) Naming.lookup("rmi://" + rmiHost + "/" + DN_PREFIX + i.toString());
-                } catch (Exception e) {
-                    continue;
-                }
-                toDelete.add(i);
-                dns.put(i, dn);
-                log("Found Data Node " + i.toString());
-            }
-            toDelete.stream().forEach((i) -> {leftPeers.remove(i);});
-            if(leftPeers.isEmpty()) {
-                break;
-            }
+        while (dns.size() != numberDNs) {
             try {
                 Thread.sleep(1000);
-            } catch (Exception E) {}
+            } catch (InterruptedException ex) {
+                Logger.getLogger(NameNode.class.getName()).log(Level.SEVERE, null, ex);
+            }
         }
-        for(Integer i=0; i<DN_COUNT; i++)
-            dnLocations.add(new DataNodeLocation("", i));
     }
 }
-

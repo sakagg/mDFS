@@ -163,4 +163,12 @@ public class ProtoMessage {
         builder.addAllStatus(responseStatuses);
         return builder.build().toByteArray();
     }
+    
+    public static byte[] reportIPRequest(Integer id, String ip, Integer port) {
+        Hdfs.ReportIPRequest.Builder builder = Hdfs.ReportIPRequest.newBuilder();
+        builder.setId(id);
+        builder.setIp(ip);
+        builder.setPort(port);
+        return builder.build().toByteArray();
+    }
 }

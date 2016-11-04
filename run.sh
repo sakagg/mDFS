@@ -15,7 +15,7 @@ CLIENT_CODE_DIR="Client"
 PROTO_CODE_DIR="Proto"
 DEPENDENCIES="ExternalLibs/protobuf-java-3.0.0.jar"
 COMPILED_DIR="Compiled"
-NUM_DNS=3
+NUM_DNS=2
 
 kill $(ps aux | grep 'NameNode' | awk '{print $2}')
 kill $(ps aux | grep 'DataNode' | awk '{print $2}')

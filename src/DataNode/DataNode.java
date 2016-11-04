@@ -7,23 +7,23 @@ package DataNode;
 
 import NameNode.INameNode;
 import NameNode.NameNode;
-import static NameNode.NameNode.log;
 import Proto.Hdfs;
 import Proto.ProtoMessage;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.rmi.Naming;
+import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
+import java.rmi.registry.LocateRegistry;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
 import java.util.logging.Level;
@@ -40,12 +40,10 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
     private static final String DN_PREFIX = "DataNode";
     
     private static Integer myId = -1;
-    private static Integer DN_COUNT = -1;
     private static String Directory;
-    private static String rmiHost = "";
+    private static Properties props = new Properties();
     
     private INameNode nn = null;
-    private static final HashMap<Integer, IDataNode> dns = new HashMap<>();
     
     DataNode() throws RemoteException {
         super();
@@ -88,28 +86,30 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
     
     public static void main (String args[]) {
         myId = Integer.parseInt(args[1]);
-        DN_COUNT = Integer.parseInt(args[3]);
         
         Directory = DIRECTORY_PREFIX + myId + "/";
         
-        Properties props = new Properties();
         try {
             props.load(new BufferedReader(new FileReader("config.properties")));
         } catch (IOException ex) {
             Logger.getLogger(NameNode.class.getName()).log(Level.SEVERE, null, ex);
         }
         
-        rmiHost = props.getProperty("rmiserver.host", "localhost")
-                + ":" + props.getProperty("rmiserver.port", "1099");
-
         try {
-            DataNode dn = new DataNode();
-            Naming.rebind("rmi://" + rmiHost + "/" + DN_PREFIX + myId.toString(), dn);
+            LocateRegistry.createRegistry(Integer.parseInt(props.getProperty("rmi.datanode.port")));
+        } catch (RemoteException ex) {}
+        
+        DataNode dn;
+        try {
+            dn = new DataNode();
+            Naming.rebind("rmi://localhost:" + props.getProperty("rmi.datanode.port") + "/" + DN_PREFIX, dn);
             log("Bound to RMI");
-            dn.finddns(DN_COUNT);
             dn.findnn();
+            dn.reportIP();
             dn.reportBlocks();
-        } catch (Exception e) { log(e.toString()); }
+        } catch (RemoteException | MalformedURLException ex) {
+            Logger.getLogger(DataNode.class.getName()).log(Level.SEVERE, null, ex);
+        }
         for(;;) {}
     }
     
@@ -151,16 +151,36 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
                 dataNodeLocations.remove(0);
                 blockNumber = blockLocations.getBlockNumber();
                 byte[] casecadedwriteBlockRequest = ProtoMessage.writeBlockRequest(data, blockNumber, dataNodeLocations);
-                IDataNode dn = dns.get(blockLocations.getLocations(1).getPort());
-                log("Cascading request for blockNumber " + blockNumber + " to datanode: " + blockLocations.getLocations(1).getPort());
-                dn.writeBlock(casecadedwriteBlockRequest);
+                IDataNode dn;
+                try {
+                    dn = (IDataNode) Naming.lookup("rmi://" + blockLocations.getLocations(1).getIp()
+                            + ":" + blockLocations.getLocations(1).getPort()
+                            + "/" + DN_PREFIX);
+                    log("Cascading request for blockNumber " + blockNumber + " to datanode: " + blockLocations.getLocations(1).getPort());
+                    dn.writeBlock(casecadedwriteBlockRequest);
+                } catch (NotBoundException ex) {
+                    Logger.getLogger(DataNode.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (MalformedURLException ex) {
+                    Logger.getLogger(DataNode.class.getName()).log(Level.SEVERE, null, ex);
+                }
             }
             return ProtoMessage.writeBlockResponse(1);
         }
     
+    public void reportIP() {
+        byte[] request = ProtoMessage.reportIPRequest(myId, props.getProperty("rmi.datanode.ip"), Integer.parseInt(props.getProperty("rmi.datanode.port")));
+        try {
+            nn.reportIP(request);
+        } catch (RemoteException ex) {
+            Logger.getLogger(DataNode.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
+    
     public void reportBlocks() {
         List<Integer> blockNumbers = getAllBlocks();
-        byte[] req = ProtoMessage.blockReportRequest(myId, "", myId, blockNumbers);
+        String ip = props.getProperty("rmi.datanode.ip");
+        Integer port = Integer.parseInt(props.getProperty("rmi.datanode.port"));
+        byte[] req = ProtoMessage.blockReportRequest(myId, ip, port, blockNumbers);
         
         try {
             byte[] res = nn.blockReport(req);
@@ -176,38 +196,12 @@ public class DataNode extends UnicastRemoteObject implements IDataNode {
         } catch (Exception e) { log(e.toString()); }
     }    
         
-    public void finddns(Integer numberDNs) {
-        HashSet<Integer> leftPeers = new HashSet<>();
-        for(int i=0; i<numberDNs; i++)
-            leftPeers.add(i);
-        for(;;) {
-            ArrayList<Integer> toDelete = new ArrayList<>();
-            for(Integer i: leftPeers) {
-                IDataNode dn;
-                try {
-                    dn = (IDataNode) Naming.lookup("rmi://" + rmiHost + "/" + DN_PREFIX + i.toString());
-                } catch (Exception e) {
-                    continue;
-                }
-                toDelete.add(i);
-                dns.put(i, dn);
-                log("Found Data Node " + i.toString());
-            }
-            toDelete.stream().forEach((i) -> {leftPeers.remove(i);});
-            if(leftPeers.isEmpty()) {
-                break;
-            }
-            try {
-                Thread.sleep(1000);
-            } catch (Exception E) {}
-        }
-    }
-    
     public void findnn() {
         while(nn == null)
         {
             try {
-                nn = (INameNode) Naming.lookup("rmi://" + rmiHost + "/" + NN_NAME);
+                nn = (INameNode) Naming.lookup("rmi://" + props.getProperty("rmi.namenode.ip")
+                        + ":" + props.getProperty("rmi.namenode.port") + "/" + NN_NAME);
                 log("Found Name Node");
             } catch (Exception e) {}
             if (nn == null)
