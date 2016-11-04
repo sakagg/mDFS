@@ -112,7 +112,6 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
         for (File file : files) {
             if (!file.isDirectory()) {
                 String handleTxt = file.getName();
-                log(handleTxt);
                 Integer handle = Integer.parseInt(handleTxt.substring(0, handleTxt.length() - 4));
                 globalFileCounter = Math.max(globalFileCounter, handle);
 
@@ -121,14 +120,15 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                 Integer numberOfLines = lines.size();
                 if(numberOfLines > 1) {
                     fileNameToHandle.put(lines.get(0), handle);
-                    log("fileName : " + lines.get(0));
                     ArrayList<Integer> blocks = new ArrayList<>();
                     for(Integer i=1; i<numberOfLines; i++) {
                         Integer blockNum = Integer.parseInt(lines.get(i));
                         blocks.add(blockNum);
                         globalBlockCounter = Math.max(globalBlockCounter, blockNum);
                     }
-                    log("blocks : " + blocks.toString());
+                    log("fileName: " + lines.get(0) 
+                            + ", handle: " + handle
+                            + ", blocks: " + blocks.toString());
                     handleToBlocks.put(handle, blocks);
                 }
             }
@@ -164,8 +164,6 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
         try {
             NameNode nn = new NameNode();
             nn.restoreStateFromDisk();
-            log(fileNameToHandle.toString());
-            log(handleToBlocks.toString());
             DN_COUNT = Integer.parseInt(args[1]);
             
             Naming.rebind("rmi://localhost:" + props.getProperty("rmi.namenode.port") + "/" + NN_NAME, nn);
@@ -298,13 +296,11 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                 ArrayList<Integer> blockNumbers = new ArrayList<>(blockReportRequest.getBlockNumbersList());
                 log("[BlockReport] received from : "
                         + blockReportRequest.getLocation().getIp()
-                        + ":" + blockReportRequest.getLocation().getPort());
+                        + ":" + blockReportRequest.getLocation().getPort()
+                        + " for block numbers : " + blockNumbers.toString());
                 for(Integer blockNumber : blockNumbers) {
-                    log("[BlockReport] BlockNumber : " + blockNumber);
                     if(blockToDnLocations.containsKey(blockNumber) == false) {
-                        log("[BlockReport] blockNumber not found in blockToDnLocations");
                         addDnLocationToBlock(blockNumber, dnl);
-                        log("[BlockReport] adding");
                         responseStatuses.add(1);
                     }
                     else {
@@ -317,13 +313,10 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
                             }
                         }
                         if(contains == false) {
-                            log("[BlockReport] DnLocation not found in blockToDnLocations");
                             addDnLocationToBlock(blockNumber, dnl);
-                            log("[BlockReport] adding");
                             responseStatuses.add(1);
                         }
                         else {
-                            log("[BlockReport] All OK. Already exists");
                             responseStatuses.add(1);
                         }
                     }
