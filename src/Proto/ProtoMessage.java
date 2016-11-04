@@ -54,6 +54,12 @@ public class ProtoMessage {
         return builder.build().toByteArray();
     }
     
+    public static byte[] closeFileResponse(Integer status) {
+        Hdfs.CloseFileResponse.Builder builder = Hdfs.CloseFileResponse.newBuilder();
+        builder.setStatus(status);
+        return builder.build().toByteArray();
+    }
+    
     public static byte[] writeBlockRequest(byte[] data, Hdfs.BlockLocations blockLocations) {
         Hdfs.WriteBlockRequest.Builder builder = Hdfs.WriteBlockRequest.newBuilder();
         ByteString bs = ByteString.copyFrom(data);

@@ -165,7 +165,7 @@ public class Client {
                 Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
             }
         }
-        closeFile(handle);
+        closeFile(handle); // Check status message and handle accordingly
     }
     
     public void readFile(String fileName) {

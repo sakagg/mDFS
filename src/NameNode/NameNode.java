@@ -56,6 +56,7 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
     
     private static final HashMap<Integer, IDataNode> dns = new HashMap<>();
     private static final HashMap<Integer, DataNodeLocation> dnLocations = new HashMap<>();
+    private static final HashMap<Integer, String> handleToOpenFileName = new HashMap<>();
     private static final HashMap<String, Integer> fileNameToHandle = new HashMap<>();
     private static final HashMap<Integer, ArrayList<Integer> > handleToBlocks = new HashMap<>();
     private static final HashMap<Integer, ArrayList<DataNodeLocation> > blockToDnLocations = new HashMap<>();
@@ -74,7 +75,7 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
     private Integer createFile(String fileName) throws IOException {
         Integer handle = globalFileCounter;
         globalFileCounter++;
-        fileNameToHandle.put(fileName, handle);
+        handleToOpenFileName.put(handle, fileName);
         
         String blockFile = DIRECTORY + handle.toString() + ".txt";
         PrintWriter pw = new PrintWriter(new BufferedWriter(new FileWriter(blockFile, true)));
@@ -213,7 +214,19 @@ public class NameNode extends UnicastRemoteObject implements INameNode {
 
     @Override
         public byte[] closeFile(byte[] inp) throws RemoteException {
-            return null;
+            Hdfs.CloseFileRequest closeFileRequest = null;
+            Integer status = 0;
+            try {
+                closeFileRequest = Hdfs.CloseFileRequest.parseFrom(inp);
+                Integer handle = closeFileRequest.getHandle();
+                if(handleToOpenFileName.containsKey(handle)) {
+                    String fileName = handleToOpenFileName.get(handle);
+                    fileNameToHandle.put(fileName, handle);
+                    handleToOpenFileName.remove(handle);
+                    status = 1;
+                }
+            } catch (InvalidProtocolBufferException e) {log(e.toString());}
+            return ProtoMessage.closeFileResponse(status);
         }
 
     @Override
